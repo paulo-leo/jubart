@@ -1,0 +1,12 @@
+{
+    auto_https off
+    admin off
+}
+:{$HTTP_PORT:8000} {
+    root * {$STATIC_ROOT}
+    encode gzip zstd
+    @hidden path /.env* /.git/*
+    respond @hidden 404
+    {$SPA_TRY}
+    file_server
+}

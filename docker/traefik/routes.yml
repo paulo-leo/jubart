@@ -1,0 +1,28 @@
+http:
+  routers:
+    app-http:
+      rule: 'Host(`{{ env "APP_DOMAIN" }}`)'
+      entryPoints:
+        - web
+      service: app
+{{ if eq (env "APP_TLS_ENABLED") "true" }}
+      middlewares:
+        - force-https
+    app-https:
+      rule: 'Host(`{{ env "APP_DOMAIN" }}`)'
+      entryPoints:
+        - websecure
+      service: app
+      tls:
+        certResolver: letsencrypt
+  middlewares:
+    force-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+{{ end }}
+  services:
+    app:
+      loadBalancer:
+        servers:
+          - url: http://php:{{ env "PHP_UPSTREAM_PORT" }}

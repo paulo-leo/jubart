@@ -1,0 +1,9 @@
+pdo_mysql
+mbstring
+intl
+zip
+bcmath
+gd
+opcache
+pcntl
+redis

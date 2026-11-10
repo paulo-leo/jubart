@@ -1,0 +1,547 @@
+services:
+  panel:
+    mem_limit: ${CONTAINER_MEMORY_PANEL:-0}
+    memswap_limit: ${CONTAINER_MEMORY_PANEL:-0}
+    build:
+      context: ./docker/panel
+      args:
+        NODE_VERSION: ${NODE_VERSION}
+        DOCKER_CLI_IMAGE: ${DOCKER_CLI_IMAGE}
+    restart: unless-stopped
+    working_dir: ${PANEL_WORKSPACE_DIRECTORY}
+    ports:
+      - "${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-9090}:3000"
+    environment:
+      PANEL_WORKSPACE_DIRECTORY: ${PANEL_WORKSPACE_DIRECTORY}
+      PANEL_USERNAME: ${PANEL_USERNAME}
+      PANEL_PASSWORD: ${PANEL_PASSWORD:?Defina PANEL_PASSWORD no .env}
+      PANEL_COOKIE_SECURE: ${PANEL_COOKIE_SECURE:-false}
+      PANEL_VAULT_KEY: ${PANEL_VAULT_KEY}
+      PANEL_TERMINAL_ENABLED: ${PANEL_TERMINAL_ENABLED:-false}
+      HOST_STORAGE_DIRECTORY: ${HOST_STORAGE_DIRECTORY:-.}
+      PANEL_METRICS_INTERVAL_MS: ${PANEL_METRICS_INTERVAL_MS:-5000}
+      TRAEFIK_METRICS_PORT: ${TRAEFIK_METRICS_PORT:-8082}
+    volumes:
+      - type: bind
+        source: .
+        target: ${PANEL_WORKSPACE_DIRECTORY}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PANEL_PROJECTS_DIRECTORY}
+        target: ${PANEL_PROJECTS_DIRECTORY}
+        read_only: false
+        bind:
+          create_host_path: false
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${HOST_STORAGE_DIRECTORY:-.}
+        target: /host/storage
+        read_only: true
+        bind:
+          create_host_path: false
+      # Leituras mínimas do host Linux; não monta a raiz do host.
+      - /proc/stat:/host/proc/stat:ro
+      - /proc/cpuinfo:/host/proc/cpuinfo:ro
+      - /proc/meminfo:/host/proc/meminfo:ro
+      - /proc/uptime:/host/proc/uptime:ro
+      - /proc/loadavg:/host/proc/loadavg:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /etc/hostname:/host/etc/hostname:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - app
+      - proxy
+
+  traefik:
+    mem_limit: ${CONTAINER_MEMORY_TRAEFIK:-0}
+    memswap_limit: ${CONTAINER_MEMORY_TRAEFIK:-0}
+    image: traefik:${TRAEFIK_VERSION}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: ${TRAEFIK_LOG_MAX_SIZE:-10m}
+        max-file: "${TRAEFIK_LOG_MAX_FILES:-3}"
+    ports:
+      - "${HTTP_BIND_ADDRESS}:${HTTP_PORT}:80"
+      - "${HTTP_BIND_ADDRESS}:${HTTPS_PORT}:443"
+    environment:
+      TZ: ${TZ}
+      PANEL_DOMAIN: ${PANEL_DOMAIN:-}
+      PANEL_PROXY_ENABLED: ${PANEL_PROXY_ENABLED:-false}
+      PANEL_TLS_ENABLED: ${PANEL_TLS_ENABLED:-false}
+      ACTIVE_PROFILES: ${COMPOSE_PROFILES:-}
+      APP_2_DOMAIN: ${APP_2_DOMAIN:-app2.localhost}
+      APP_3_DOMAIN: ${APP_3_DOMAIN:-app3.localhost}
+      PHP_UPSTREAM_PORT: ${PHP_HTTP_PORT:-8000}
+      APP_2_UPSTREAM_PORT: ${APP_2_HTTP_PORT:-8000}
+      APP_3_UPSTREAM_PORT: ${APP_3_HTTP_PORT:-8000}
+      APP_DOMAIN: ${APP_DOMAIN:?Defina APP_DOMAIN no .env}
+      APP_TLS_ENABLED: ${TRAEFIK_TLS_ENABLED}
+      TRAEFIK_ENTRYPOINTS_METRICS_ADDRESS: :${TRAEFIK_METRICS_PORT:-8082}
+      TRAEFIK_METRICS_PROMETHEUS: "true"
+      TRAEFIK_METRICS_PROMETHEUS_ENTRYPOINT: metrics
+      TRAEFIK_METRICS_PROMETHEUS_ADDENTRYPOINTSLABELS: "true"
+      TRAEFIK_METRICS_PROMETHEUS_ADDROUTERSLABELS: "true"
+      TRAEFIK_METRICS_PROMETHEUS_ADDSERVICESLABELS: "true"
+      TRAEFIK_ENTRYPOINTS_WEB_ADDRESS: :80
+      TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS: :443
+      TRAEFIK_PROVIDERS_FILE_DIRECTORY: /etc/traefik/dynamic
+      TRAEFIK_PROVIDERS_FILE_WATCH: "true"
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL: ${ACME_EMAIL}
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE: /letsencrypt/acme.json
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT: web
+      TRAEFIK_LOG_LEVEL: ${TRAEFIK_LOG_LEVEL}
+      TRAEFIK_ACCESSLOG: "true"
+      TRAEFIK_ACCESSLOG_FORMAT: json
+      TRAEFIK_ACCESSLOG_FIELDS_HEADERS_DEFAULTMODE: drop
+      TRAEFIK_API_DASHBOARD: "false"
+    volumes:
+      - ./docker/traefik:/etc/traefik/dynamic:ro
+      - traefik_acme:/letsencrypt
+    networks:
+      - proxy
+
+  php:
+    mem_limit: ${CONTAINER_MEMORY_PHP:-0}
+    memswap_limit: ${CONTAINER_MEMORY_PHP:-0}
+    container_name: php
+    build:
+      context: ./docker/php
+      args:
+        PHP_VERSION: ${PHP_VERSION:?Defina PHP_VERSION no .env}
+        FRANKENPHP_VERSION: ${FRANKENPHP_VERSION}
+        FRANKENPHP_DIGEST: ${FRANKENPHP_DIGEST}
+        COMPOSER_IMAGE: ${COMPOSER_IMAGE}
+        PHP_INSTALL_SQLSERVER: ${PHP_INSTALL_SQLSERVER:-false}
+        PHP_INSTALL_POSTGRESQL: ${PHP_INSTALL_POSTGRESQL:-false}
+        PHP_INSTALL_SQLITE: ${PHP_INSTALL_SQLITE:-false}
+        PHP_INSTALL_MYSQLI: ${PHP_INSTALL_MYSQLI:-false}
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: ["sh", "/usr/local/bin/start-server.sh"]
+    environment:
+      TZ: ${TZ}
+      PHP_HTTP_PORT: ${PHP_HTTP_PORT:-8000}
+      PHP_DOCUMENT_ROOT: ${PHP_DOCUMENT_ROOT:-/var/www/html/public}
+      REDIS_PREFIX: ${APP_REDIS_PREFIX:-primary_}
+      REDIS_DB: ${APP_REDIS_DB:-0}
+      REDIS_CACHE_DB: ${APP_REDIS_CACHE_DB:-1}
+      APP_URL: ${APP_URL:?Defina APP_URL no .env}
+      INERTIA_SSR_ENABLED: ${INERTIA_SSR_ENABLED}
+      INERTIA_SSR_URL: http://ssr:${SSR_PORT}
+      PHP_SERVER_MODE: ${PHP_SERVER_MODE:-traditional}
+      OCTANE_WORKERS: ${OCTANE_WORKERS}
+      OCTANE_MAX_REQUESTS: ${OCTANE_MAX_REQUESTS}
+      OCTANE_SERVER: frankenphp
+      OCTANE_HTTPS: ${TRAEFIK_TLS_ENABLED}
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      PHP_SESSION_COOKIE_SECURE: ${PHP_SESSION_COOKIE_SECURE}
+      PHP_SESSION_GC_MAXLIFETIME: ${PHP_SESSION_GC_MAXLIFETIME}
+      PHP_OPCACHE_MEMORY: ${PHP_OPCACHE_MEMORY}
+      PHP_DISPLAY_ERRORS: ${PHP_DISPLAY_ERRORS:-Off}
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT}
+      PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE}
+      PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE}
+      PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME}
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: valkey
+      REDIS_PORT: ${VALKEY_PORT}
+      REDIS_PASSWORD: ${VALKEY_PASSWORD}
+      DB_CONNECTION: mysql
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - type: bind
+        source: ${APP_DIRECTORY:?Defina APP_DIRECTORY no .env}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+      - ./docker/php/automation.php:/opt/infra/automation.php:ro
+      - ./docker/php/errors:/etc/frankenphp/errors:ro
+      - ./docker/php/Caddyfile:/etc/frankenphp/Caddyfile:ro
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/zz-app.ini:ro
+      - ./docker/php/sessions.ini:/usr/local/etc/php/conf.d/zz-sessions.ini:ro
+      - ./docker/php/opcache.ini:/usr/local/etc/php/conf.d/zz-opcache.ini:ro
+      - ./docker/php/extensions.ini:/usr/local/etc/php/conf.d/zz-extensions.ini:ro
+    depends_on:
+      valkey:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+        required: false
+    networks:
+      - app
+      - proxy
+
+  node:
+    mem_limit: ${CONTAINER_MEMORY_NODE:-0}
+    memswap_limit: ${CONTAINER_MEMORY_NODE:-0}
+    image: node:${APP_NODE_VERSION:-${NODE_VERSION}}
+    profiles: ["tools"]
+    working_dir: /var/www/html
+    user: "${NODE_UID}:${NODE_GID}"
+    environment:
+      TZ: ${TZ}
+      NPM_CONFIG_CACHE: /tmp/npm-cache
+    entrypoint: ["npm"]
+    command: ["--version"]
+    volumes:
+      - type: bind
+        source: ${APP_DIRECTORY:?Defina APP_DIRECTORY no .env}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+    networks:
+      - app
+
+  vite:
+    mem_limit: ${CONTAINER_MEMORY_VITE:-0}
+    memswap_limit: ${CONTAINER_MEMORY_VITE:-0}
+    image: node:${APP_NODE_VERSION:-${NODE_VERSION}}
+    restart: unless-stopped
+    working_dir: /var/www/html
+    user: "${NODE_UID}:${NODE_GID}"
+    volumes:
+      - type: bind
+        source: ${APP_DIRECTORY:?Defina APP_DIRECTORY no .env}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+    networks:
+      - app
+    profiles: ["vite"]
+    command: ["npm", "run", "${VITE_NPM_SCRIPT}", "--", "--host", "0.0.0.0", "--port", "${VITE_PORT}", "--strictPort"]
+    ports:
+      - "${VITE_BIND_ADDRESS}:${VITE_PORT}:${VITE_PORT}"
+    environment:
+      TZ: ${TZ}
+      APP_URL: ${APP_URL}
+      VITE_PORT: ${VITE_PORT}
+      VITE_HMR_HOST: ${VITE_HMR_HOST}
+      VITE_HMR_PROTOCOL: ${VITE_HMR_PROTOCOL}
+      VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT}
+      VITE_USE_POLLING: ${VITE_USE_POLLING}
+      NPM_CONFIG_CACHE: /tmp/npm-cache
+
+  ssr:
+    mem_limit: ${CONTAINER_MEMORY_SSR:-0}
+    memswap_limit: ${CONTAINER_MEMORY_SSR:-0}
+    image: node:${APP_NODE_VERSION:-${NODE_VERSION}}
+    restart: unless-stopped
+    working_dir: /var/www/html
+    user: "${NODE_UID}:${NODE_GID}"
+    volumes:
+      - type: bind
+        source: ${APP_DIRECTORY:?Defina APP_DIRECTORY no .env}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+    networks:
+      - app
+    profiles: ["ssr"]
+    command: ["node", "${SSR_BUNDLE}"]
+    environment:
+      TZ: ${TZ}
+      NODE_ENV: production
+      SSR_PORT: ${SSR_PORT}
+
+
+  mariadb:
+    profiles: ["db-mariadb-${MARIADB_ENABLED:-true}"]
+    mem_limit: ${CONTAINER_MEMORY_MARIADB:-0}
+    memswap_limit: ${CONTAINER_MEMORY_MARIADB:-0}
+    image: mariadb:${MARIADB_VERSION}
+    command: ["--default-storage-engine=${MARIADB_DEFAULT_STORAGE_ENGINE:-InnoDB}"]
+    ports:
+      - "${MARIADB_BIND_ADDRESS:-127.0.0.1}:${MARIADB_PORT:-3306}:3306"
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USERNAME}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - app
+
+  valkey:
+    mem_limit: ${CONTAINER_MEMORY_VALKEY:-0}
+    memswap_limit: ${CONTAINER_MEMORY_VALKEY:-0}
+    image: valkey/valkey:${VALKEY_VERSION}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?Defina VALKEY_PASSWORD no .env}
+      VALKEY_PORT: ${VALKEY_PORT}
+      VALKEY_MAXMEMORY: ${VALKEY_MAXMEMORY}
+      VALKEY_MAXMEMORY_POLICY: ${VALKEY_MAXMEMORY_POLICY}
+      VALKEY_APPENDONLY: ${VALKEY_APPENDONLY}
+      VALKEY_APPENDFSYNC: ${VALKEY_APPENDFSYNC}
+    command:
+      - sh
+      - -ec
+      - |
+        exec valkey-server --bind 0.0.0.0 --protected-mode yes \
+          --port "$$VALKEY_PORT" --requirepass "$$VALKEY_PASSWORD" \
+          --dir /data --maxmemory "$$VALKEY_MAXMEMORY" \
+          --maxmemory-policy "$$VALKEY_MAXMEMORY_POLICY" \
+          --appendonly "$$VALKEY_APPENDONLY" --appendfsync "$$VALKEY_APPENDFSYNC"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$VALKEY_PASSWORD" valkey-cli --raw -h 127.0.0.1 -p "$$VALKEY_PORT" ping | grep -qx PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app
+
+
+  backup:
+    profiles: ["db-mariadb-${MARIADB_ENABLED:-true}"]
+    mem_limit: ${CONTAINER_MEMORY_BACKUP:-0}
+    memswap_limit: ${CONTAINER_MEMORY_BACKUP:-0}
+    build:
+      context: ./docker/backup
+      args:
+        MARIADB_VERSION: ${MARIADB_VERSION}
+    restart: unless-stopped
+    environment:
+      BACKUP_ENGINE: mariadb
+      BACKUP_DB_HOST: mariadb
+      BACKUP_DB_USERNAME: root
+      BACKUP_DATABASES: ${BACKUP_DATABASES:-*}
+      BACKUP_DB_DATABASE: ${DB_DATABASE}
+      BACKUP_DB_PASSWORD: ${DB_ROOT_PASSWORD}
+      BACKUP_ENABLED: ${BACKUP_ENABLED}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE}
+      BACKUP_TIMEZONE: ${BACKUP_TIMEZONE}
+      BACKUP_RUN_ON_START: ${BACKUP_RUN_ON_START}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS}
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS}
+      BACKUP_REMOTE_ENABLED: ${BACKUP_REMOTE_ENABLED}
+      BACKUP_REMOTE_PREFIX: ${BACKUP_REMOTE_PREFIX}
+      BACKUP_S3_PROVIDER: ${BACKUP_S3_PROVIDER}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY}
+      BACKUP_S3_ENV_AUTH: ${BACKUP_S3_ENV_AUTH}
+    volumes:
+      - type: bind
+        source: ${BACKUP_DIRECTORY:?Defina BACKUP_DIRECTORY no .env}
+        target: /backups
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "/opt/backup/backup.py", "health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    networks:
+      - app
+
+  postgres:
+    profiles: ["db-postgres-${POSTGRES_ENABLED:-true}"]
+    mem_limit: ${CONTAINER_MEMORY_POSTGRES:-0}
+    memswap_limit: ${CONTAINER_MEMORY_POSTGRES:-0}
+    image: postgres:${POSTGRES_VERSION}
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - app
+
+  backup-postgres:
+    profiles: ["db-postgres-${POSTGRES_ENABLED:-true}"]
+    mem_limit: ${CONTAINER_MEMORY_BACKUP_POSTGRES:-0}
+    memswap_limit: ${CONTAINER_MEMORY_BACKUP_POSTGRES:-0}
+    build:
+      context: ./docker/backup
+      dockerfile: Dockerfile.postgres
+      args:
+        POSTGRES_VERSION: ${POSTGRES_VERSION}
+    restart: unless-stopped
+    environment:
+      BACKUP_ENGINE: postgres
+      BACKUP_DB_HOST: postgres
+      BACKUP_DB_USERNAME: ${POSTGRES_USER}
+      BACKUP_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DB_DATABASE: ${POSTGRES_DB}
+      BACKUP_ENABLED: ${PG_BACKUP_ENABLED}
+      BACKUP_SCHEDULE: ${PG_BACKUP_SCHEDULE}
+      BACKUP_TIMEZONE: ${PG_BACKUP_TIMEZONE}
+      BACKUP_RUN_ON_START: ${PG_BACKUP_RUN_ON_START}
+      BACKUP_RETENTION_DAYS: ${PG_BACKUP_RETENTION_DAYS}
+      BACKUP_MAX_AGE_HOURS: ${PG_BACKUP_MAX_AGE_HOURS}
+      BACKUP_DATABASES: ${PG_BACKUP_DATABASES}
+      BACKUP_REMOTE_ENABLED: ${PG_BACKUP_REMOTE_ENABLED}
+      BACKUP_REMOTE_PREFIX: ${PG_BACKUP_REMOTE_PREFIX}
+      BACKUP_S3_PROVIDER: ${PG_BACKUP_S3_PROVIDER}
+      BACKUP_S3_BUCKET: ${PG_BACKUP_S3_BUCKET}
+      BACKUP_S3_REGION: ${PG_BACKUP_S3_REGION}
+      BACKUP_S3_ENDPOINT: ${PG_BACKUP_S3_ENDPOINT}
+      BACKUP_S3_ACCESS_KEY_ID: ${PG_BACKUP_S3_ACCESS_KEY_ID}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${PG_BACKUP_S3_SECRET_ACCESS_KEY}
+      BACKUP_S3_ENV_AUTH: ${PG_BACKUP_S3_ENV_AUTH}
+    volumes:
+      - type: bind
+        source: ${PG_BACKUP_DIRECTORY}
+        target: /backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "/opt/backup/backup.py", "health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    networks:
+      - app
+
+
+  phpmyadmin:
+    profiles: ["db-mariadb-${MARIADB_ENABLED:-true}"]
+    mem_limit: ${CONTAINER_MEMORY_PHPMYADMIN:-0}
+    memswap_limit: ${CONTAINER_MEMORY_PHPMYADMIN:-0}
+    image: phpmyadmin:${PHPMYADMIN_VERSION}
+    restart: unless-stopped
+    ports:
+      - "${PHPMYADMIN_BIND_ADDRESS}:${PHPMYADMIN_PORT}:80"
+    environment:
+      TZ: ${TZ}
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+        required: false
+    networks:
+      - app
+
+  php-app2:
+    mem_limit: ${CONTAINER_MEMORY_PHP_APP2:-0}
+    memswap_limit: ${CONTAINER_MEMORY_PHP_APP2:-0}
+    extends:
+      service: php
+    container_name: php-app2
+    profiles: ["app2"]
+    environment:
+      PHP_HTTP_PORT: ${APP_2_HTTP_PORT:-8000}
+      APP_URL: ${APP_2_URL:-http://app2.localhost}
+      PHP_SERVER_MODE: ${APP_2_SERVER_MODE:-traditional}
+      PHP_DOCUMENT_ROOT: ${APP_2_DOCUMENT_ROOT:-/var/www/html/public}
+      INERTIA_SSR_ENABLED: "false"
+      DB_DATABASE: ${APP_2_DB_DATABASE:-app2}
+      DB_USERNAME: ${APP_2_DB_USERNAME:-app2}
+      DB_PASSWORD: ${APP_2_DB_PASSWORD:-}
+      REDIS_PREFIX: ${APP_2_REDIS_PREFIX:-app2_}
+      REDIS_DB: ${APP_2_REDIS_DB:-2}
+      REDIS_CACHE_DB: ${APP_2_REDIS_CACHE_DB:-3}
+    volumes:
+      - type: bind
+        source: ${APP_2_DIRECTORY:-./app2}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+
+  node-app2:
+    mem_limit: ${CONTAINER_MEMORY_NODE_APP2:-0}
+    memswap_limit: ${CONTAINER_MEMORY_NODE_APP2:-0}
+    extends:
+      service: node
+    profiles: ["tools-app2"]
+    volumes:
+      - type: bind
+        source: ${APP_2_DIRECTORY:-./app2}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+
+  php-app3:
+    mem_limit: ${CONTAINER_MEMORY_PHP_APP3:-0}
+    memswap_limit: ${CONTAINER_MEMORY_PHP_APP3:-0}
+    extends:
+      service: php
+    container_name: php-app3
+    profiles: ["app3"]
+    environment:
+      PHP_HTTP_PORT: ${APP_3_HTTP_PORT:-8000}
+      APP_URL: ${APP_3_URL:-http://app3.localhost}
+      PHP_SERVER_MODE: ${APP_3_SERVER_MODE:-traditional}
+      PHP_DOCUMENT_ROOT: ${APP_3_DOCUMENT_ROOT:-/var/www/html/public}
+      INERTIA_SSR_ENABLED: "false"
+      DB_DATABASE: ${APP_3_DB_DATABASE:-app3}
+      DB_USERNAME: ${APP_3_DB_USERNAME:-app3}
+      DB_PASSWORD: ${APP_3_DB_PASSWORD:-}
+      REDIS_PREFIX: ${APP_3_REDIS_PREFIX:-app3_}
+      REDIS_DB: ${APP_3_REDIS_DB:-4}
+      REDIS_CACHE_DB: ${APP_3_REDIS_CACHE_DB:-5}
+    volumes:
+      - type: bind
+        source: ${APP_3_DIRECTORY:-./app3}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+
+  node-app3:
+    mem_limit: ${CONTAINER_MEMORY_NODE_APP3:-0}
+    memswap_limit: ${CONTAINER_MEMORY_NODE_APP3:-0}
+    extends:
+      service: node
+    profiles: ["tools-app3"]
+    volumes:
+      - type: bind
+        source: ${APP_3_DIRECTORY:-./app3}
+        target: /var/www/html
+        bind:
+          create_host_path: false
+
+
+volumes:
+  traefik_acme:
+  mariadb_data:
+  postgres_data:
+  valkey_data:
+
+networks:
+  proxy:
+    driver: bridge
+  app:
+    driver: bridge

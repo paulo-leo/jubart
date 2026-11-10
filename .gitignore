@@ -1,0 +1,11 @@
+.env
+/app/
+
+/backups/
+
+/.panel-state/
+/.env.panel-staged
+
+/docker/panel/node_modules/
+
+__pycache__/

@@ -1,0 +1,23 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
+import {atomicWrite} from './core.mjs';
+const hash=value=>createHash('sha256').update(value).digest('hex');
+export const executionActions=['worker.register','worker.start','worker.stop','worker.restart','worker.remove','job.register','job.dispatch','job.interrupt','job.remove','job.retry','scheduler.register','scheduler.start','scheduler.stop','scheduler.run'];
+const fail=(text,status=400)=>{throw Object.assign(new Error(text),{status});};
+export function createMCPKeys(root){const directory=path.join(root,'.panel-state/mcp'),filename=path.join(directory,'keys.json');let writes=Promise.resolve();const rates=new Map();
+ const serial=fn=>{const result=writes.then(fn);writes=result.catch(()=>{});return result;};
+ async function load(){try{return JSON.parse(await fs.readFile(filename,'utf8'));}catch(e){if(e.code==='ENOENT')return [];throw e;}}
+ async function save(keys){await fs.mkdir(directory,{recursive:true,mode:0o700});await atomicWrite(filename,JSON.stringify(keys,null,2)+'\n');}
+ async function audit(event){return serial(async()=>{await fs.mkdir(directory,{recursive:true,mode:0o700});const file=path.join(directory,'audit.jsonl');const stat=await fs.stat(file).catch(()=>null);if(stat?.size>10*1024*1024){for(let i=4;i>=1;i--)await fs.rename(file+'.'+i,file+'.'+(i+1)).catch(()=>{});await fs.rename(file,file+'.1');}await fs.appendFile(file,JSON.stringify({at:new Date().toISOString(),...event})+'\n',{mode:0o600});});}
+ const publicKey=({digest,...entry})=>entry;
+ return {audit,
+ async list(){return (await load()).map(publicKey);},
+ async create(data,actor){if(typeof data.name!=='string'||!data.name.trim()||data.name.length>80||/[\x00-\x1f]/.test(data.name))fail('Nome de chave inválido.');if(!Array.isArray(data.scopes)||!data.scopes.length||data.scopes.some(s=>!['read','execute'].includes(s)))fail('Permissões inválidas.');const actions=data.actions||[];if(!Array.isArray(actions)||actions.some(a=>!executionActions.includes(a))||data.scopes.includes('execute')&&!actions.length)fail('Selecione ações permitidas para execução.');const days=Number(data.expiresInDays===undefined?90:data.expiresInDays);if(!Number.isInteger(days)||days<1||days>365)fail('Expiração deve ser entre 1 e 365 dias.');
+ const id=randomBytes(8).toString('hex'),token=`ic_mcp_${id}_${randomBytes(32).toString('base64url')}`,entry={id,name:data.name.trim(),prefix:`ic_mcp_${id}_…`,digest:hash(token),scopes:[...new Set(data.scopes)],actions:data.scopes.includes('execute')?[...new Set(actions)]:[],createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+days*86400000).toISOString(),revokedAt:null};await audit({actor,event:'key.create',keyId:id,scopes:entry.scopes,actions:entry.actions});await serial(async()=>{const keys=await load();if(keys.length>=200)fail('Limite de 200 chaves atingido.');keys.push(entry);await save(keys);});return {key:publicKey(entry),token};},
+ async revoke(id,actor){if(!/^[a-f0-9]{16}$/.test(id))fail('Chave inválida.');await audit({actor,event:'key.revoke',keyId:id});return serial(async()=>{const keys=await load(),key=keys.find(k=>k.id===id);if(!key)fail('Chave não encontrada.',404);key.revokedAt??=new Date().toISOString();await save(keys);return {key:publicKey(key)};});},
+ async authenticate(req){const address=req.socket.remoteAddress||'unknown';const now=Date.now();for(const [id,r]of rates)if(now>r.until)rates.delete(id);const keyRate='ip:'+address,r=rates.get(keyRate)||{count:0,until:now+60000};r.count++;rates.set(keyRate,r);if(r.count>120)fail('Limite de 120 requisições por minuto/IP.',429);
+ const token=req.headers.authorization?.match(/^Bearer (ic_mcp_[a-f0-9]{16}_[A-Za-z0-9_-]{43})$/)?.[1];const key=token&&(await load()).find(k=>k.id===token.split('_')[2]);if(!key||key.revokedAt||Date.parse(key.expiresAt)<=now||!timingSafeEqual(Buffer.from(key.digest,'hex'),Buffer.from(hash(token),'hex'))){await audit({event:'authentication.denied',address});fail('Chave ausente, inválida, expirada ou revogada.',401);}return publicKey(key);},
+ async auditList(){let text;try{text=await fs.readFile(path.join(directory,'audit.jsonl'),'utf8');}catch(e){if(e.code==='ENOENT')return [];throw e;}return text.trim().split('\n').filter(Boolean).slice(-200).map(line=>JSON.parse(line)).reverse();}
+ };
+}

@@ -1,0 +1,41 @@
+http:
+  routers:
+{{ if has "app2" (splitList "," (env "ACTIVE_PROFILES")) }}
+    app2-http:
+      rule: 'Host(`{{ env "APP_2_DOMAIN" }}`)'
+      entryPoints: [web]
+      service: app2
+{{ if eq (env "APP_TLS_ENABLED") "true" }}
+      middlewares: [force-https]
+    app2-https:
+      rule: 'Host(`{{ env "APP_2_DOMAIN" }}`)'
+      entryPoints: [websecure]
+      service: app2
+      tls:
+        certResolver: letsencrypt
+{{ end }}
+{{ end }}
+{{ if has "app3" (splitList "," (env "ACTIVE_PROFILES")) }}
+    app3-http:
+      rule: 'Host(`{{ env "APP_3_DOMAIN" }}`)'
+      entryPoints: [web]
+      service: app3
+{{ if eq (env "APP_TLS_ENABLED") "true" }}
+      middlewares: [force-https]
+    app3-https:
+      rule: 'Host(`{{ env "APP_3_DOMAIN" }}`)'
+      entryPoints: [websecure]
+      service: app3
+      tls:
+        certResolver: letsencrypt
+{{ end }}
+{{ end }}
+  services:
+    app2:
+      loadBalancer:
+        servers:
+          - url: http://php-app2:{{ env "APP_2_UPSTREAM_PORT" }}
+    app3:
+      loadBalancer:
+        servers:
+          - url: http://php-app3:{{ env "APP_3_UPSTREAM_PORT" }}

@@ -1,0 +1,44 @@
+{
+    auto_https off
+    admin off
+    frankenphp
+}
+
+:{$PHP_HTTP_PORT:8000} {
+    root * {$PHP_DOCUMENT_ROOT:/var/www/html/public}
+    encode zstd gzip
+    # Personaliza respostas de navegação HTML; preserva APIs e protocolo Inertia.
+    @browser {
+        # Em diagnóstico, preservar corpo original (erro PHP/Laravel).
+        expression `"{$PHP_DISPLAY_ERRORS:Off}" != "On"`
+        header Accept *text/html*
+        not header X-Inertia *
+    }
+    intercept @browser {
+        @pages status 404 500 502 503 504
+        handle_response @pages {
+            root * /etc/frankenphp/errors
+            rewrite * /{resp.status_code}.html
+            method GET
+            header Content-Type "text/html; charset=utf-8"
+            header Cache-Control "no-store"
+            file_server {
+                status {resp.status_code}
+            }
+        }
+    }
+    php_server
+    handle_errors {
+        @pages expression `{err.status_code} in [404, 500, 502, 503, 504]`
+        handle @pages {
+            root * /etc/frankenphp/errors
+            rewrite * /{err.status_code}.html
+            header Cache-Control "no-store"
+            file_server
+        }
+        handle {
+            respond "Não foi possível processar a solicitação." {err.status_code}
+        }
+    }
+    log
+}

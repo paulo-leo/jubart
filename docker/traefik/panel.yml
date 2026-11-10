@@ -1,0 +1,30 @@
+http:
+{{ if eq (env "PANEL_PROXY_ENABLED") "true" }}
+  routers:
+    panel-http:
+      rule: 'Host(`{{ env "PANEL_DOMAIN" }}`)'
+      entryPoints: [web]
+      service: panel-admin
+{{ if eq (env "PANEL_TLS_ENABLED") "true" }}
+      middlewares: [panel-force-https]
+    panel-https:
+      rule: 'Host(`{{ env "PANEL_DOMAIN" }}`)'
+      entryPoints: [websecure]
+      service: panel-admin
+      tls:
+        certResolver: letsencrypt
+  middlewares:
+    panel-force-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+{{ end }}
+  services:
+    panel-admin:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://panel:3000
+{{ else }}
+  routers: {}
+{{ end }}

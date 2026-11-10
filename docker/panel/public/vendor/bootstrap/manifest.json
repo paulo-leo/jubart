@@ -1,0 +1,9 @@
+{
+  "version": "6.0.0-alpha.1",
+  "source": "https://registry.npmjs.org/bootstrap/-/bootstrap-6.0.0-alpha.1.tgz",
+  "npmIntegrity": "sha512-snAWSjKDVdQAyPOtR69Upy247tZq13gw86SMDMZS4wNfBXGNdzbHdIP6GAyaAVJwTX4LjWowY8YYaJkSDv2wGQ==",
+  "sha256": {
+    "bootstrap.min.css": "678508b198d9b1b8877e338f419fdada00024be2bcc638a539dd724856095112",
+    "bootstrap.bundle.min.js": "47ea447f46e288dd9d3e83147b7ba539c6df5192c047b8f91739cd56a5721148"
+  }
+}

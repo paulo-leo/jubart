@@ -1,0 +1,4 @@
+interface:
+  display_name: "Infra Control MCP"
+  short_description: "Consultar infraestrutura e controlar filas via MCP"
+  default_prompt: "Use $infra-control-mcp para diagnosticar esta infraestrutura e operar somente as automações autorizadas."

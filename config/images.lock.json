@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "resolvedAt": "2026-11-09",
+  "images": {
+    "dunglas/frankenphp:1-php8.4.27-bookworm": {
+      "digest": "sha256:30061df7626971d597e45962269dfa7c077d972e96d1c4baf7c9259d5f7ecd55",
+      "reference": "dunglas/frankenphp:1-php8.4.27-bookworm@sha256:30061df7626971d597e45962269dfa7c077d972e96d1c4baf7c9259d5f7ecd55"
+    },
+    "mariadb:11.4": {
+      "digest": "sha256:d1891ede5a559f1086f55053bb8cc1569b0298338c4d72d71725a7f74f6ba620",
+      "reference": "mariadb:11.4@sha256:d1891ede5a559f1086f55053bb8cc1569b0298338c4d72d71725a7f74f6ba620"
+    },
+    "phpmyadmin:5.2-apache": {
+      "digest": "sha256:f54a37b908b26caa7032c4eb0c7f3495fdd90208a06eed9c4b2c8e691dd1662c",
+      "reference": "phpmyadmin:5.2-apache@sha256:f54a37b908b26caa7032c4eb0c7f3495fdd90208a06eed9c4b2c8e691dd1662c"
+    },
+    "node:24-bookworm-slim": {
+      "digest": "sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9",
+      "reference": "node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9"
+    },
+    "traefik:v3.7": {
+      "digest": "sha256:f4bb143d1135a579b630ed491e17ec50f6f7c9c6a30585ff3d385471d2a86f5a",
+      "reference": "traefik:v3.7@sha256:f4bb143d1135a579b630ed491e17ec50f6f7c9c6a30585ff3d385471d2a86f5a"
+    },
+    "valkey/valkey:8-alpine": {
+      "digest": "sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a",
+      "reference": "valkey/valkey:8-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a"
+    },
+    "postgres:18-bookworm": {
+      "digest": "sha256:f1ea2a1a4fb7b68d4836be1fdcb8a6466a89b072158bf9d97663600538c294c5",
+      "reference": "postgres:18-bookworm@sha256:f1ea2a1a4fb7b68d4836be1fdcb8a6466a89b072158bf9d97663600538c294c5"
+    },
+    "caddy:2-alpine": {
+      "digest": "sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9",
+      "reference": "caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9"
+    },
+    "composer:2": {
+      "digest": "sha256:8de2184c6de224f4689e8f80ed5f5edaf0030b6b8b7839a22a2bcb6722ac87d0",
+      "reference": "composer:2@sha256:8de2184c6de224f4689e8f80ed5f5edaf0030b6b8b7839a22a2bcb6722ac87d0"
+    },
+    "docker:cli": {
+      "digest": "sha256:2357639ad1ea7d0194134bf3292622fd4e562483966ed674e5d7c945b5f3b28d",
+      "reference": "docker:cli@sha256:2357639ad1ea7d0194134bf3292622fd4e562483966ed674e5d7c945b5f3b28d"
+    }
+  }
+}
