@@ -38,7 +38,8 @@ const mock = async (_,args,options) => {
  if(args.some(a=>a.includes('for folder in /proc/')))return {stdout:'1\t0\t100\tS\t1024\tserver\n22\t1\t200\tS\t512\tworker\n'};
  if(args.some(a=>a.includes('kill -"$signal"')))return {stdout:''};
  if(args[0]==='ps'&&args.some(a=>a==='label=com.docker.compose.oneoff=False'))return {stdout:'a'.repeat(64)};
- if(args[0]==='inspect'&&args[1]==='a'.repeat(64))return {stdout:JSON.stringify([{Id:'a'.repeat(64),Config:{Labels:{'com.docker.compose.project':'laravel','com.docker.compose.service':'php'}},HostConfig:{PidMode:''}}])};
+ if(args.includes('ps')&&args.includes('-q'))return {stdout:'a'.repeat(64)};
+ if(args[0]==='inspect'&&args[1]==='a'.repeat(64))return {stdout:JSON.stringify([{Id:'a'.repeat(64),State:{Running:true},Config:{Labels:{'com.docker.compose.project':'laravel','com.docker.compose.service':'php'}},HostConfig:{PidMode:''}}])};
  if(args.includes('exec')&&args.includes('sh'))return {stdout:'PHP 8.4 · teste de console\n',stderr:''};
  if(args.includes('schedule:list'))return {stdout:'0 3 * * *  Gerar relatório · próxima execução em 18 horas'};
  if(args.includes('ps')&&args.includes('--format'))return {stdout:JSON.stringify([{Service:'worker-aabbccddeeff',State:'running'},{Service:'scheduler-aabbccddeeff',State:'running'}])};
@@ -51,7 +52,8 @@ const mock = async (_,args,options) => {
 };
 let metricCount=1250;
 const metricsFetcher=async()=>({ok:true,text:async()=>`process_start_time_seconds 100\ntraefik_entrypoint_requests_total{entrypoint="web",code="200"} ${metricCount+=12}\ntraefik_entrypoint_requests_total{entrypoint="web",code="500"} 3\ntraefik_entrypoint_request_duration_seconds_sum{entrypoint="web"} ${metricCount/10}\ntraefik_entrypoint_request_duration_seconds_count{entrypoint="web"} ${metricCount}\ntraefik_router_requests_total{router="app-http@file",code="200"} ${metricCount}\n`});
-const server=createPanel({metricsFetcher,root,username:'paulo',password:'preview-password-only',terminalEnabled:true,transferRunner:async({job,output,onBytes})=>{if(job.kind==='export'){await fs.writeFile(output,'CREATE TABLE sample(id int);');onBytes(28);}},executor:mock});
+const terminalEngine={async open(){terminalExecutions++;let output,exit;return {onData:fn=>output=fn,onExit:fn=>exit=fn,resume(){output(Buffer.from('PHP 8.4 · teste de console\r\n$ '));},write:data=>output(Buffer.from(data)),resize:async()=>{},close:async()=>{}};}};
+const server=createPanel({terminalEngine,metricsFetcher,root,username:'paulo',password:'preview-password-only',terminalEnabled:true,transferRunner:async({job,output,onBytes})=>{if(job.kind==='export'){await fs.writeFile(output,'CREATE TABLE sample(id int);');onBytes(28);}},executor:mock});
 server.listen(0,'127.0.0.1'); await once(server,'listening');
 const profile=await fs.mkdtemp('/tmp/infra-panel-chromium-');
 const chrome=spawn(browserBinary,['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-port=9227','--user-data-dir='+profile,'--window-size=1440,1050','about:blank'],{stdio:'ignore'});
@@ -75,6 +77,8 @@ try{
  await wait('!!document.querySelector("#login-form")','Login React não abriu');
  await set('[name=username]','paulo');await set('[name=password]','preview-password-only');
  await evaluate('document.querySelector("#login-form").requestSubmit()');
+ await wait('!!document.querySelector("[data-hub-tab=services]")','Central de aplicativos não carregou');
+ await click('[data-hub-tab=services]');
  await wait('document.querySelectorAll("#services tr").length===9','Serviços React não carregaram');
  await click('#profile-menu summary');await wait('document.querySelector("#profile-menu").open');
  if(await evaluate('!!document.querySelector(".sidebar #logout")'))throw new Error('Conta permaneceu na sidebar');
@@ -99,9 +103,9 @@ try{
  await click('#overview-refresh');await new Promise(r=>setTimeout(r,150));if(await evaluate('document.querySelectorAll("#services tr").length')!==1)throw new Error('Atualização perdeu busca');
  await click('#view-overview .filter-clear');await wait('document.querySelectorAll("#services tr").length===9');
  await click('[data-service=php][data-service-action=terminal]');await wait('!!document.querySelector("#terminal-dialog")');
- await set('#terminal-command','php -v');await evaluate('document.querySelector("#terminal-form").requestSubmit()');await wait('!!document.querySelector("#confirm-dialog")');await click('#confirm-cancel');
- if(terminalExecutions)throw new Error('Terminal executou após cancelar');await new Promise(r=>setTimeout(r,80));await evaluate('document.querySelector("#terminal-form").requestSubmit()');await approve();await wait('document.querySelector("#terminal-output").textContent.includes("teste de console")');
- await click('#terminal-dialog .icon-button');
+ await click('#terminal-connect');await wait('!!document.querySelector("#confirm-dialog")');await click('#confirm-cancel');
+ if(terminalExecutions)throw new Error('Terminal executou após cancelar');await new Promise(r=>setTimeout(r,80));await click('#terminal-connect');await approve();await wait('document.querySelector("#terminal-output").textContent.includes("teste de console")');
+ await click('#terminal-dialog .icon-button');await approve();await wait('!document.querySelector("#terminal-dialog")');
  await tab('apps');await click('[data-app-open=main]');await wait('!!document.querySelector("#app-editor-dialog")');await wait('document.querySelector("#app-env-open")?.disabled===false');
  await click('#app-env-open');await wait('!!document.querySelector("#app-env-dialog")');if(!await evaluate('document.querySelector("#app-env-dialog textarea").getBoundingClientRect().width>document.querySelector("#app-env-dialog-form").getBoundingClientRect().width*.9'))throw new Error('Editor estreito');await click('#app-env-dialog [data-dialog-maximize]');if(!await evaluate('document.querySelector("#app-env-dialog").classList.contains("modal-maximized")'))throw new Error('Maximizar falhou');await click('#app-env-dialog [data-dialog-maximize]');await set('#app-env-dialog textarea','APP_NAME=ReactPreview');await evaluate('document.querySelector("#app-env-dialog-form").requestSubmit()');await approve();await wait('!document.querySelector("#app-env-dialog")');
  if(!(await fs.readFile(path.join(root,'projects/principal/.env'),'utf8')).includes('ReactPreview'))throw new Error('.env não foi salvo');

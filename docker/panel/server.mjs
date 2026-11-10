@@ -1,4 +1,6 @@
-import {createPanelUsers,derivePassword,passwordOptions,hasPermission,databaseAllowed} from './panel-users.mjs';
+import {createSQLConsole} from './sql-console.mjs';
+import {createTerminalManager} from './terminal.mjs';
+import {createPanelUsers,derivePassword,passwordOptions,hasPermission,databaseAllowed,terminalAllowed,terminalRouteAllowed} from './panel-users.mjs';
 import {createDelegatedAccess,delegatedServiceRoute} from './delegated-access.mjs';
 import {createRuntimeVersions} from './runtime-versions.mjs';
 import {createAppPackages} from './app-packages.mjs';
@@ -37,13 +39,14 @@ const runFile = (command, args, options) => new Promise((resolve, reject) => {
   child.stdin.end(input || '');
 });
 const here = path.dirname(fileURLToPath(import.meta.url));
-export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || process.cwd(), username = process.env.PANEL_USERNAME, password = process.env.PANEL_PASSWORD, executor = runFile, metricsFetcher = fetch, terminalEnabled = process.env.PANEL_TERMINAL_ENABLED === 'true', secureCookie = process.env.PANEL_COOKIE_SECURE === 'true', transferRunner } = {}) {
+export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || process.cwd(), username = process.env.PANEL_USERNAME, password = process.env.PANEL_PASSWORD, executor = runFile, metricsFetcher = fetch, terminalEnabled = process.env.PANEL_TERMINAL_ENABLED === 'true', secureCookie = process.env.PANEL_COOKIE_SECURE === 'true', transferRunner, terminalEngine, sqlRunner } = {}) {
   if (!username || !password || password.length < 16) throw new Error('Defina PANEL_USERNAME e PANEL_PASSWORD com no mínimo 16 caracteres no .env.');
   const envFile = path.join(root, '.env'), configFile = path.join(root, 'config/apps.json');
   const salt = randomBytes(16), key = scryptSync(password, salt, 32,passwordOptions);
   const sessions = new Map(), attempts = new Map();
   const panelUsers=createPanelUsers({root,bootstrapUsername:username});
   const instanceId=randomBytes(8).toString('hex');
+  const terminals=createTerminalManager({engine:terminalEngine,audit:event=>panelUsers.audit(event),onBusy:value=>{terminalBusy=value;},authorize:async owner=>{const session=sessions.get(owner);if(!session||session.expires<Date.now())return false;const user=await panelUsers.principal(session.userId);return !!((user?.admin||hasPermission(user,'terminal.apps')||hasPermission(user,'terminal.services'))&&user.version===session.version);}});
   let operation = null, counter = 0, terminalBusy = false;
   const readEnv = async () => fs.readFile(envFile, 'utf8');
   const digest = data => createHash('sha256').update(data).digest('hex');
@@ -106,6 +109,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
     return clean(await compose([...profiles, '--profile', 'automation', '--profile', 'automation-disabled', 'logs', '--no-color', '--timestamps', '--tail=1000', ...(since ? ['--since', since] : []), service]));
   }
   const databases = createDatabaseAPI({ root, compose, readEnv, startOperation });
+  const sqlConsole=createSQLConsole({root,readEnv,databases,audit:event=>panelUsers.audit(event),runner:sqlRunner});
   const automation = createAutomationAPI({ root, compose, loadConfig, readEnv, clean, startOperation, serviceLogs });
   const phpAPI=createPHPAPI({root,readEnv,loadConfig,compose,startOperation,automation});
   const transfers=createTransfers({root,runner:transferRunner});
@@ -130,7 +134,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     try {
       const url = new URL(req.url, 'http://localhost');
       if (!['GET', 'POST', 'PUT'].includes(req.method)) return send(res, 405, { error: 'Método não permitido.' });
@@ -174,8 +178,9 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         const actor=principal.username;
         if (req.method !== 'GET' && req.headers['x-csrf-token'] !== session.csrf) return send(res, 403, { error: 'Sessão inválida. Entre novamente.' });
         if (url.pathname === '/api/session' && req.method === 'GET') return send(res, 200, { username:principal.username,csrf:session.csrf,access:principal });
-        if (url.pathname === '/api/logout' && req.method === 'POST') { sessions.delete(token); res.setHeader('Set-Cookie', 'infra_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return send(res, 200, { ok: true }); }
+        if (url.pathname === '/api/logout' && req.method === 'POST') { await terminals.closeOwner(token); sessions.delete(token); res.setHeader('Set-Cookie', 'infra_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return send(res, 200, { ok: true }); }
         if(!principal.admin){
+          if(url.pathname==='/api/access/terminals'&&req.method==='GET'){const saved=(await loadConfig()).config,data=await snapshot();return send(res,200,{terminalEnabled,applications:saved.applications.filter(a=>terminalAllowed(principal,'apps',a.id)).map(a=>({id:a.id,name:a.name,enabled:a.enabled,service:slots[a.id].service,state:data.services.find(s=>s.name===slots[a.id].service)?.state||'not_created'})),services:data.services.filter(s=>terminalAllowed(principal,'services',s.name)&&s.name!=='panel'&&!s.name.startsWith('node')&&!s.automation).map(s=>({name:s.name,state:s.state}))});}
           if(url.pathname==='/api/access/summary'&&req.method==='GET')return send(res,200,await delegated.summary(principal));
           if(url.pathname==='/api/access/monitor'&&req.method==='GET'&&hasPermission(principal,'monitor.read'))return send(res,200,await hostInfo());
           if(url.pathname==='/api/access/backups'&&req.method==='GET'&&(hasPermission(principal,'backups.read')||hasPermission(principal,'backups.run')))return send(res,200,await delegated.backupInventory(principal));
@@ -184,19 +189,19 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           if(url.pathname==='/api/operation-preview'&&req.method==='POST'){
             const payload=await body(req),route=payload.route,data=payload.data||{};
             if(route==='/logout')return send(res,200,await operationPreview({root,route,data:{},config:(await loadConfig()).config}));
-            if(typeof route==='string'&&delegatedServiceRoute(principal,'/api'+route,'POST'))return send(res,200,await operationPreview({root,route,data,config:(await loadConfig()).config,compose}));
+            if(typeof route==='string'&&(delegatedServiceRoute(principal,'/api'+route,'POST')||terminalRouteAllowed(principal,'/api'+route,'POST')))return send(res,200,await operationPreview({root,route,data,config:(await loadConfig()).config,compose}));
             if(route==='/access/backups/run'&&databaseAllowed(principal,data.engine,data.database,'run'))return send(res,200,await operationPreview({root,route,data,config:(await loadConfig()).config,compose}));
             await panelUsers.audit({actor,event:'access.denied',route:typeof route==='string'?route.slice(0,200):'invalid'});return send(res,403,{error:'Operação não autorizada.'});
           }
-          if(!delegatedServiceRoute(principal,url.pathname,req.method)){await panelUsers.audit({actor,event:'access.denied',route:url.pathname.slice(0,200)});return send(res,403,{error:'Você não possui permissão para esta área ou recurso.'});}
+          if(!delegatedServiceRoute(principal,url.pathname,req.method)&&!terminalRouteAllowed(principal,url.pathname,req.method)){await panelUsers.audit({actor,event:'access.denied',route:url.pathname.slice(0,200)});return send(res,403,{error:'Você não possui permissão para esta área ou recurso.'});}
         }
         if(url.pathname==='/api/panel-users'&&req.method==='GET'){
           const listed=await panelUsers.list(),definition=await composeConfig(),databaseChoices=[];
           const results=await Promise.allSettled(['mariadb','postgres'].map(engine=>databases.handle(`/api/databases/${engine}`,'GET',{})));
           results.forEach((result,index)=>{if(result.status==='fulfilled')for(const db of result.value.body.inventory?.databases||[]){if(/^[a-z][a-z0-9_]{0,47}$/.test(db.name)&&!['mysql','postgres','template0','template1','sys','information_schema','performance_schema'].includes(db.name))databaseChoices.push({engine:index===0?'mariadb':'postgres',database:db.name});}});
-          return send(res,200,{...listed,services:[...new Set([...Object.keys(definition.services),...listed.users.flatMap(u=>u.services)])].filter(n=>n!=='panel'&&n!=='*'&&!n.startsWith('node')&&!/^(worker|scheduler)-/.test(n)),databases:[...new Map([...databaseChoices,...listed.users.flatMap(u=>u.databases)].map(d=>[d.engine+':'+d.database,d])).values()]});
+          return send(res,200,{...listed,applications:(await loadConfig()).config.applications.map(a=>({id:a.id,name:a.name})),services:[...new Set([...Object.keys(definition.services),...listed.users.flatMap(u=>u.services)])].filter(n=>n!=='panel'&&n!=='*'&&!n.startsWith('node')&&!/^(worker|scheduler)-/.test(n)),databases:[...new Map([...databaseChoices,...listed.users.flatMap(u=>u.databases)].map(d=>[d.engine+':'+d.database,d])).values()]});
         }
-        if(url.pathname==='/api/panel-users/save'&&req.method==='POST')return send(res,200,await panelUsers.save(await body(req),principal));
+        if(url.pathname==='/api/panel-users/save'&&req.method==='POST'){const result=await panelUsers.save(await body(req),principal);for(const [id,entry] of sessions)if(entry.userId===result.user.id){await terminals.closeOwner(id);sessions.delete(id);}return send(res,200,result);}
         if(url.pathname==='/api/php'||url.pathname.startsWith('/api/php/')){
           if(req.method!=='GET'&&(operation?.state==='running'||terminalBusy))return send(res,409,{error:'Aguarde a operação atual.'});
           const result=await phpAPI.handle(url.pathname,req.method,req.method==='GET'?{}:await body(req));
@@ -267,6 +272,11 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           if (operation?.state === 'running' || terminalBusy) return send(res, 409, { error: 'Aguarde a operação atual.' });
           return send(res, 200, await appEnv.save(envRoute[1], await body(req)));
         }
+        const sqlConnections=url.pathname.match(/^\/api\/databases\/(mariadb|postgres)\/sql-connections$/);
+        if(sqlConnections){if(req.method!=='GET')return send(res,405,{error:'Use GET.'});return send(res,200,await sqlConsole.connections(sqlConnections[1],url.searchParams.get('database')));}
+        const sqlRoute=url.pathname.match(/^\/api\/databases\/(mariadb|postgres)\/sql$/);
+        if(sqlRoute){if(req.method!=='POST')return send(res,405,{error:'Use POST para executar SQL.'});return send(res,200,await sqlConsole.execute(sqlRoute[1],await body(req),actor));}
+
         if (url.pathname.startsWith('/api/databases/')) {
           if (req.method !== 'GET' && (operation?.state === 'running' || terminalBusy)) return send(res, 409, { error: 'Aguarde a operação atual.' });
           const result = await databases.handle(url.pathname, req.method, req.method === 'GET' ? {} : await body(req));
@@ -336,6 +346,36 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           await atomicWrite(cutoffFile, JSON.stringify(cutoffs));
           return send(res, 200, { ok: true, since: cutoffs[data.service] });
         }
+        const interactiveOpen=url.pathname.match(/^\/api\/services\/([a-z0-9-]+)\/terminal$/);
+        const appTerminal=url.pathname.match(/^\/api\/apps\/(main|app[0-9]+)\/terminal$/);
+        const interactiveSession=url.pathname.match(/^\/api\/terminal\/([a-f0-9]{48})\/(stream|input|resize|close)$/);
+        if(interactiveOpen||appTerminal||interactiveSession){
+          if(!terminalEnabled)return send(res,403,{error:'Terminal desativado. Habilite PANEL_TERMINAL_ENABLED e recrie o painel.'});
+          if((interactiveOpen||appTerminal)&&req.method==='POST'){
+            if(terminalBusy||operation?.state==='running')return send(res,409,{error:'Aguarde a operação ou encerre o terminal atual.'});
+            let app;
+            if(appTerminal){app=(await loadConfig()).config.applications.find(a=>a.id===appTerminal[1]);if(!app?.enabled)return send(res,409,{error:'Salve, habilite e aplique a aplicação antes de abrir o terminal.'});}
+            const service=app?slots[app.id].service:interactiveOpen[1],definition=await composeConfig();
+            if(!terminalAllowed(principal,app?'apps':'services',app?.id||service))return send(res,403,{error:'Terminal não autorizado para este recurso.'});
+            if(!Object.hasOwn(definition.services,service)||service==='panel'||service.startsWith('node')||/^(worker|scheduler)-/.test(service))return send(res,403,{error:'Terminal indisponível para esse serviço.'});
+            const ids=(await compose(['--profile','*','ps','-q',service])).trim().split(/\s+/).filter(Boolean);
+            if(ids.length!==1||!/^[a-f0-9]{12,64}$/.test(ids[0]))return send(res,409,{error:'O serviço precisa ter exatamente um container em execução.'});
+            const [container]=JSON.parse(await docker(['inspect',ids[0]]));
+            if(!container.State?.Running||container.Config?.Labels?.['com.docker.compose.project']!==definition.name||container.Config?.Labels?.['com.docker.compose.service']!==service)return send(res,403,{error:'Container fora do projeto ou parado.'});
+            const data=await body(req);
+            return send(res,201,await terminals.open({container:container.Id,service,shell:data.shell,cols:data.cols,rows:data.rows,owner:token,actor,workingDirectory:app?(app.type==='node'?app.workingDirectory:'/var/www/html'):undefined}));
+          }
+          if(interactiveSession){const [,id,action]=interactiveSession;
+            if(action==='stream'&&req.method==='GET')return terminals.attach(id,token,req,res);
+            if(req.method==='POST'){
+              const data=await body(req);
+              if(action==='input')return send(res,200,await terminals.input(id,token,data.data));
+              if(action==='resize')return send(res,200,await terminals.resize(id,token,data.cols,data.rows));
+              if(action==='close')return send(res,200,await terminals.close(id,token));
+            }
+          }
+          return send(res,405,{error:'Método inválido para o terminal.'});
+        }
         const terminalMatch = url.pathname.match(/^\/api\/services\/([a-z0-9-]+)\/exec$/);
         if (terminalMatch && req.method === 'POST') {
           if (!terminalEnabled) return send(res, 403, { error: 'Terminal desativado. Habilite PANEL_TERMINAL_ENABLED no .env e recrie o painel.' });
@@ -376,17 +416,19 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         return send(res, 404, { error: 'Operação não encontrada.' });
       }
       if (req.method !== 'GET') return send(res, 405, { error: 'Método inválido.' });
-      const assets = { '/react-app.js': ['react-app.js', 'text/javascript; charset=utf-8'], '/react-app.js.LEGAL.txt': ['react-app.js.LEGAL.txt', 'text/plain; charset=utf-8'], '/bootstrap-ui.js': ['bootstrap-ui.js', 'text/javascript; charset=utf-8'], '/vendor/bootstrap/bootstrap.min.css': ['vendor/bootstrap/bootstrap.min.css', 'text/css; charset=utf-8'], '/vendor/bootstrap/bootstrap.bundle.min.js': ['vendor/bootstrap/bootstrap.bundle.min.js', 'text/javascript; charset=utf-8'], '/change-plan.js': ['change-plan.js', 'text/javascript; charset=utf-8'], '/theme.js': ['theme.js', 'text/javascript; charset=utf-8'], '/ui.js': ['ui.js', 'text/javascript; charset=utf-8'], '/icons.js': ['icons.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/automation-ui.js': ['automation-ui.js', 'text/javascript; charset=utf-8'], '/dialogs.js': ['dialogs.js', 'text/javascript; charset=utf-8'], '/service-ui.js': ['service-ui.js', 'text/javascript; charset=utf-8'], '/metrics-ui.js': ['metrics-ui.js', 'text/javascript; charset=utf-8'], '/database-ui.js': ['database-ui.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
+      const assets = { '/apple-ui.css': ['apple-ui.css', 'text/css; charset=utf-8'], '/modern-ui.css': ['modern-ui.css', 'text/css; charset=utf-8'], '/react-app.css': ['react-app.css', 'text/css; charset=utf-8'], '/react-app.js': ['react-app.js', 'text/javascript; charset=utf-8'], '/react-app.js.LEGAL.txt': ['react-app.js.LEGAL.txt', 'text/plain; charset=utf-8'], '/bootstrap-ui.js': ['bootstrap-ui.js', 'text/javascript; charset=utf-8'], '/vendor/bootstrap/bootstrap.min.css': ['vendor/bootstrap/bootstrap.min.css', 'text/css; charset=utf-8'], '/vendor/bootstrap/bootstrap.bundle.min.js': ['vendor/bootstrap/bootstrap.bundle.min.js', 'text/javascript; charset=utf-8'], '/change-plan.js': ['change-plan.js', 'text/javascript; charset=utf-8'], '/theme.js': ['theme.js', 'text/javascript; charset=utf-8'], '/ui.js': ['ui.js', 'text/javascript; charset=utf-8'], '/icons.js': ['icons.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/automation-ui.js': ['automation-ui.js', 'text/javascript; charset=utf-8'], '/dialogs.js': ['dialogs.js', 'text/javascript; charset=utf-8'], '/service-ui.js': ['service-ui.js', 'text/javascript; charset=utf-8'], '/metrics-ui.js': ['metrics-ui.js', 'text/javascript; charset=utf-8'], '/database-ui.js': ['database-ui.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
       const asset = assets[url.pathname];
       if (!asset) return send(res, 404, 'Não encontrado.', 'text/plain');
       return send(res, 200, await fs.readFile(path.join(here, 'public', asset[0]), 'utf8'), asset[1]);
     } catch (error) { if(res.headersSent||res.destroyed){res.destroy();return;} return send(res, error.status || 400, { error: await clean(error.message).catch(() => 'Não foi possível concluir a operação.') }); }
   });
   server.on('listening',()=>captures.start());
-  server.on('close',()=>captures.stop());
+  server.on('close',()=>{captures.stop();void terminals.dispose();});
+  server.shutdown=async()=>{await terminals.dispose();await new Promise(resolve=>server.close(resolve));};
   return server;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = createPanel();
+  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{void server.shutdown().finally(()=>process.exit(0));});
   server.listen(3000, '0.0.0.0', () => console.log('Infra Control disponível na porta interna 3000.'));
 }

@@ -19,12 +19,11 @@ http:
         scheme: https
         permanent: true
 {{ end }}
+{{ end }}
   services:
     panel-admin:
       loadBalancer:
         passHostHeader: true
         servers:
           - url: http://panel:3000
-{{ else }}
-  routers: {}
-{{ end }}
+

@@ -15,7 +15,7 @@ COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/
 WORKDIR /opt/panel
 COPY --from=panel-build /opt/runtime/node_modules ./node_modules
 COPY . .
-COPY --from=panel-build /opt/panel/public/react-app.js /opt/panel/public/react-app.js.LEGAL.txt ./public/
+COPY --from=panel-build /opt/panel/public/react-app.js /opt/panel/public/react-app.js.LEGAL.txt /opt/panel/public/react-app.css ./public/
 ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["node", "/opt/panel/server.mjs"]

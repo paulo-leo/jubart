@@ -1,0 +1,7 @@
+import React,{useState} from 'react';
+import {useResource,Section,Load,Table,Button} from '../ui.jsx';
+import {Terminal} from '../Terminal.jsx';
+export function AuthorizedTerminals(){
+ const resource=useResource('/access/terminals',true,10000),[selected,setSelected]=useState(null);
+ return <><Section title="Terminais autorizados" description="Somente aplicações e serviços liberados pelo administrador. Os comandos executam diretamente no container." actions={<Button onClick={resource.refresh}>Atualizar</Button>}><Load resource={resource}>{data=><>{!data.terminalEnabled&&<p className="info-line">O terminal está desativado no .env da infraestrutura.</p>}<Table id="authorized-terminals" label="terminais" rowKey={r=>r.key} rows={[...data.applications.map(a=>({...a,key:'app:'+a.id,kind:'Aplicação',appId:a.id})),...data.services.map(s=>({...s,key:'service:'+s.name,kind:'Serviço',service:s.name,enabled:true}))]} columns={[{title:'RECURSO',render:r=><strong>{r.name}</strong>},{title:'TIPO',render:r=>r.kind},{title:'ESTADO',render:r=>r.enabled?r.state:'Desabilitada'},{title:'AÇÃO',render:r=><Button disabled={!data.terminalEnabled||!r.enabled||r.state!=='running'} onClick={()=>setSelected(r)}>Terminal</Button>}]}/></>}</Load></Section>{selected&&<Terminal service={selected.service} appId={selected.appId} appName={selected.kind==='Aplicação'?selected.name:undefined} onClose={()=>setSelected(null)}/>}</>;
+}

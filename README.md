@@ -26,7 +26,7 @@ O painel permite cadastrar aplicações, configurar acessos, gerenciar bancos e 
 > [!WARNING]
 > 🛑 **Proteja seus dados:** `docker compose down -v` apaga os volumes nomeados. Para manutenção, use os comandos de [recriação sem apagar volumes](#manutencao). Não versione senhas nem backups.
 
-[🚀 Início rápido](#inicio-rapido) · [📦 Tipos de aplicação](#tipos-aplicacao) · [➕ Cadastrar aplicações](#cadastrar-aplicacoes) · [🖥️ Painel](#painel-administrativo) · [🤖 Integração MCP](docs/MCP.md) · [👨‍💻 Visão de arquitetura](#visao-arquitetura)
+[🚀 Início rápido](#inicio-rapido) · [🧭 .env local/VPS e HTTPS](#guia-env) · [📦 Tipos de aplicação](#tipos-aplicacao) · [➕ Cadastrar aplicações](#cadastrar-aplicacoes) · [🖥️ Painel](#painel-administrativo) · [🧮 Console SQL](#console-sql) · [🤖 Integração MCP](docs/MCP.md) · [👨‍💻 Visão de arquitetura](#visao-arquitetura)
 
 ### 🗺️ Navegação
 
@@ -34,7 +34,7 @@ O painel permite cadastrar aplicações, configurar acessos, gerenciar bancos e 
 | --- | --- | --- |
 | [📦 PHP, Node.js e Estáticas](#tipos-aplicacao) | [🚀 Comandos rápidos](#comandos-rapidos) | [🔐 Certificados HTTPS](#certificados) |
 | [➕ Cadastrar aplicações](#cadastrar-aplicacoes) | [📂 Trocar pasta do projeto](#trocar-projeto) | [💾 Backup automático](#backup-automatico) |
-| [🌍 Local e VPS](#local-vps) | [🔧 Aplicar alterações do .env](#manutencao) | [🗄️ Backup e restauração SQL](#backup-manual) |
+| [🧭 .env local/VPS: passo a passo](#guia-env) | [🔧 Aplicar alterações do .env](#manutencao) | [🗄️ Backup e restauração SQL](#backup-manual) |
 | [🐘 PHP e módulos](#php-modulos) | [🧭 Saúde, logs e administração](#administracao) | [🛡️ Certificados e arquivos](#backup-arquivos) |
 | [📦 npm](#npm) | [⚡ Workers Octane e deploy](#octane-deploy) | [⚡ Valkey e persistência](#valkey) |
 | [🎨 Inertia, Vite e SSR](#frontend) | [⏱️ Filas e Scheduler Laravel](#filas-scheduler) | [🧩 Adicionar serviços](#novos-servicos) |
@@ -251,6 +251,200 @@ O `.env` da infraestrutura concentra variáveis operacionais e credenciais; `.en
 Na VPS aponte DNS A/AAAA corretamente e permita entrada nas portas 80 e 443. Traefik termina TLS; Octane recebe HTTP interno. O Compose fornece `OCTANE_HTTPS` conforme TLS; configure proxies confiáveis no Laravel conforme sua versão. Na aplicação use `APP_ENV=production`, `APP_DEBUG=false` e cookies seguros ao habilitar HTTPS.
 
 MariaDB publica por padrão `127.0.0.1:3306` no host; ajuste `MARIADB_BIND_ADDRESS` e `MARIADB_PORT` no `.env`. phpMyAdmin atende http://localhost:8081 com `DB_USERNAME` e `DB_PASSWORD`; endereço, porta, versão e upload são configuráveis com `PHPMYADMIN_*`. Na VPS mantenha-o em loopback e acesse com `ssh -N -L 8081:127.0.0.1:8081 usuario@IP_DA_VPS`.
+
+<a id="guia-env"></a>
+
+### 🧭 Guia simples: `.env` local ou VPS com domínio
+
+[💻 Local](#env-local) · [☁️ VPS com domínio](#env-vps-dominio) · [🔐 Emitir certificado](#emitir-certificado-dominio) · [🔄 Aplicar mudanças](#aplicar-env-guia) · [🖥️ Acessar painel](#acesso-painel) · [⬆️ Início](#inicio)
+
+**São dois arquivos diferentes:** o `.env` da infraestrutura configura containers, portas e proxy; o `.env` de cada aplicação configura o projeto. Mantenha credenciais diferentes entre desenvolvimento e produção. Os exemplos abaixo mostram as variáveis que mudam entre ambientes, não substituem o arquivo completo.
+
+Na primeira instalação, se ainda não houver `.env`:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Não copie esse modelo por cima de um `.env` já configurado. Preencha as senhas e a chave do cofre indicadas no modelo. Preserve versões fixadas, perfis e outras opções que já utiliza.
+
+<a id="env-local"></a>
+
+#### 💻 1. `.env` para rodar no seu computador
+
+Use caminhos absolutos existentes no seu computador:
+
+```dotenv
+APP_DIRECTORY=/home/seu-usuario/projetos/minha-aplicacao
+PANEL_WORKSPACE_DIRECTORY=/home/seu-usuario/projetos/infra-comserv
+PANEL_PROJECTS_DIRECTORY=/home/seu-usuario/projetos
+
+APP_DOMAIN=localhost
+APP_URL=http://localhost:8080
+HTTP_BIND_ADDRESS=127.0.0.1
+HTTP_PORT=8080
+HTTPS_PORT=8443
+TRAEFIK_TLS_ENABLED=false
+ACME_EMAIL=
+
+PANEL_BIND_ADDRESS=127.0.0.1
+PANEL_PORT=9090
+PANEL_PROXY_ENABLED=false
+PANEL_DOMAIN=
+PANEL_TLS_ENABLED=false
+PANEL_COOKIE_SECURE=false
+PHP_SESSION_COOKIE_SECURE=0
+
+MARIADB_ENABLED=true
+POSTGRES_ENABLED=true
+COMPOSE_PROFILES=db-mariadb-true,db-postgres-true
+MARIADB_BIND_ADDRESS=127.0.0.1
+POSTGRES_BIND_ADDRESS=127.0.0.1
+PHPMYADMIN_BIND_ADDRESS=127.0.0.1
+```
+
+Defina `false` no banco que não precisar e mantenha os dois perfis fixos. Se tiver aplicações adicionais, preserve também seus perfis. Para PHP, ajuste `PHP_DOCUMENT_ROOT` à raiz pública do projeto; Laravel normalmente usa `/var/www/html/public`.
+
+Depois de [sincronizar os apontamentos](#aplicar-env-guia), suba:
+
+```bash
+sudo docker compose config --quiet
+sudo docker compose up -d --build
+```
+
+Abra a aplicação em **http://localhost:8080** e o painel em **http://localhost:9090**. Esse cenário usa HTTP, não emite certificado e não exige liberar portas públicas no roteador.
+
+[➡️ VPS com domínio](#env-vps-dominio) · [⬆️ Guia](#guia-env)
+
+<a id="env-vps-dominio"></a>
+
+#### ☁️ 2. `.env` para VPS com domínio
+
+Exemplo: aplicação em `app.seudominio.com` e painel em `painel.seudominio.com`. Substitua esses nomes e os caminhos abaixo pelos seus:
+
+```dotenv
+APP_DIRECTORY=/var/www/minha-aplicacao
+PANEL_WORKSPACE_DIRECTORY=/var/www/infra-comserv
+PANEL_PROJECTS_DIRECTORY=/var/www
+
+APP_DOMAIN=app.seudominio.com
+APP_URL=https://app.seudominio.com
+HTTP_BIND_ADDRESS=0.0.0.0
+HTTP_PORT=80
+HTTPS_PORT=443
+TRAEFIK_TLS_ENABLED=true
+ACME_EMAIL=seu-email@seudominio.com
+
+PANEL_BIND_ADDRESS=127.0.0.1
+PANEL_PORT=9090
+PANEL_PROXY_ENABLED=true
+PANEL_DOMAIN=painel.seudominio.com
+PANEL_TLS_ENABLED=true
+PANEL_COOKIE_SECURE=true
+PHP_SESSION_COOKIE_SECURE=1
+
+MARIADB_ENABLED=true
+POSTGRES_ENABLED=true
+COMPOSE_PROFILES=db-mariadb-true,db-postgres-true
+MARIADB_BIND_ADDRESS=127.0.0.1
+POSTGRES_BIND_ADDRESS=127.0.0.1
+PHPMYADMIN_BIND_ADDRESS=127.0.0.1
+```
+
+`APP_DOMAIN` e `PANEL_DOMAIN` recebem **somente o nome**, sem `https://`, porta ou caminho. `APP_URL` recebe a URL completa. Cada domínio deve apontar para a VPS. As portas 80/443 atendem todas as aplicações por domínio; a porta 9090 continua interna. Não é necessário abrir 9443 no cenário com subdomínio.
+
+Para Laravel, configure também no **`.env` da aplicação**:
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://app.seudominio.com
+SESSION_SECURE_COOKIE=true
+```
+
+Configure os proxies confiáveis conforme a versão da aplicação, para reconhecer o HTTPS terminado no Traefik. As variáveis `APP_URL` e de banco injetadas pelo Compose têm precedência sobre o `.env` do projeto PHP. Node.js e aplicações estáticas precisam das URLs de produção pertinentes ao projeto; em builds estáticos, alterar variáveis pode exigir gerar o build novamente.
+
+Se preferir painel somente por SSH, substitua as opções do painel pelo [exemplo de túnel](#acesso-painel). Não misture cookie seguro para HTTPS com login via túnel HTTP.
+
+[➡️ Emitir certificado](#emitir-certificado-dominio) · [⬆️ Guia](#guia-env)
+
+<a id="emitir-certificado-dominio"></a>
+
+#### 🔐 3. Passo a passo para emitir o certificado do domínio
+
+1. **Configure o DNS no provedor do domínio.** Crie os registros A `app` e `painel`, ambos com o IP público da VPS. Só crie AAAA se o IPv6 da VPS funcionar. Aguarde a resolução apontar para o endereço correto.
+2. **Libere TCP 80 e 443**, no firewall do provedor e no servidor. Preserve a porta SSH de manutenção (normalmente 22). Não libere bancos, 9090 ou 3000 para esse acesso. Confira se nenhum outro servidor ocupa 80/443.
+3. **Preencha o `.env` da infraestrutura** conforme o [exemplo da VPS](#env-vps-dominio), com domínio, TLS e e-mail válidos. Confira os caminhos dos projetos e prepare as dependências das aplicações.
+4. **Sincronize os apontamentos e suba os serviços**, a partir da pasta da infraestrutura na VPS, usando os comandos abaixo.
+
+```bash
+# Com Node.js disponível no host; confira antes os apontamentos no .env.
+node docker/panel/runtime-cli.mjs --from-env
+sudo docker compose config --quiet
+sudo docker compose up -d --build
+sudo docker compose logs --tail=100 -f traefik
+```
+
+O primeiro comando atualiza `config/apps.json` e as configurações geradas a partir do `.env`. Veja os cuidados em [aplicar mudanças](#aplicar-env-guia). Se a infraestrutura já estiver rodando e você apenas alterou domínio/TLS, use o comando de recriação dessa seção.
+
+**O Traefik solicita o certificado automaticamente** ao carregar as rotas HTTPS; não precisa executar Certbot nem gerar arquivos manualmente. A validação HTTP chega pela porta 80. Aguarde a emissão e pressione `Ctrl+C` para sair dos logs sem parar os serviços.
+
+5. **Teste o HTTPS** da aplicação e do painel:
+
+```bash
+curl -I --max-time 20 https://app.seudominio.com/
+curl -I --max-time 20 https://painel.seudominio.com/
+# Deve redirecionar para HTTPS:
+curl -I --max-time 20 http://app.seudominio.com/
+# Exibir emissor e validade:
+openssl s_client -connect app.seudominio.com:443 -servername app.seudominio.com </dev/null 2>/dev/null | openssl x509 -noout -issuer -dates
+```
+
+Não use `curl -k`: queremos validar a confiança do certificado. Uma resposta 500 com TLS válido aponta para problema da aplicação, não necessariamente do certificado. Se a emissão falhar, confira DNS A/AAAA, acessibilidade pública de 80, e-mail e logs do Traefik. Não apague o estado ACME nem recrie a conta repetidamente para tentar corrigir a emissão.
+
+6. **Mantenha a renovação funcionando.** O Traefik renova automaticamente; mantenha os desafios acessíveis e preserve o volume `traefik_acme`. Não use `docker compose down -v`. Consulte [monitoramento e manutenção dos certificados](#certificados) e a [documentação oficial de ACME do Traefik](https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/).
+
+Este passo a passo é para **domínios**. HTTPS por IP usa outra configuração; veja [a diferença da implantação da VPS](#acesso-painel).
+
+[➡️ Aplicar futuras mudanças](#aplicar-env-guia) · [⬆️ Guia](#guia-env)
+
+<a id="aplicar-env-guia"></a>
+
+#### 🔄 4. Depois de alterar o `.env`
+
+O painel também mantém apontamentos em `config/apps.json`. Para usar o `.env` como fonte, sincronize antes de salvar novamente pelo painel:
+
+```bash
+node docker/panel/runtime-cli.mjs --from-env
+```
+
+**Confira antes:** esse comando reconstrói os cadastros a partir das variáveis do `.env`. Preserve nele todas as aplicações, tipos, diretórios e perfis que deseja manter; nomes personalizados do JSON podem ser substituídos. Alternativamente, configure e aplique os apontamentos pelo próprio painel. Não edite os dois lugares com valores diferentes.
+
+Sem Node.js instalado no host, use a imagem do painel (a primeira execução pode exigir build):
+
+```bash
+sudo docker compose build panel
+sudo docker compose run --rm --no-deps panel node docker/panel/runtime-cli.mjs --from-env
+```
+
+Para mudanças de portas, domínio, TLS e cookies, **não precisa rebuild**:
+
+```bash
+sudo docker compose config --quiet
+sudo docker compose up -d --no-deps --force-recreate traefik panel php
+```
+
+O exemplo contempla a aplicação principal e o painel. Recrie também serviços adicionais afetados pelas variáveis que alterou. Em Laravel com cache de configuração:
+
+```bash
+sudo docker compose exec php php artisan config:cache
+```
+
+`restart` sozinho não atualiza as variáveis dos containers. Versões de runtime e extensões instaladas durante a construção exigem `--build`; veja [manutenção completa do `.env`](#manutencao). Mudar uma senha no `.env` não altera a senha de um banco já inicializado. Os comandos de recriação preservam volumes, mas interrompem brevemente os serviços envolvidos.
+
+[🖥️ Modos de acesso ao painel](#acesso-painel) · [🔐 Certificados](#certificados) · [⬆️ Guia](#guia-env) · [⬆️ Início](#inicio)
+
 
 ---
 
@@ -1730,6 +1924,8 @@ O painel Node.js gerencia os serviços deste projeto Docker Compose, com uma int
 
 ### 🔑 Acesso e credenciais
 
+Veja [como acessar localmente, por túnel SSH ou URL pública, com as portas necessárias](#acesso-painel).
+
 O `.env` da infraestrutura contém:
 
 ```dotenv
@@ -1744,7 +1940,7 @@ PANEL_COOKIE_SECURE=false
 
 O `.env` real recebeu uma senha aleatória. Consulte-a no seu editor; ela não é exibida nos logs ou no painel. Use sua própria senha forte se preferir. O exemplo acima não é uma senha recomendada. A sessão dura oito horas e é encerrada quando o painel reinicia. Cookies são HttpOnly/SameSite Strict; há proteção de operações por token CSRF e limite de tentativas de login.
 
-`PANEL_WORKSPACE_DIRECTORY` precisa ser o caminho absoluto **real no host** desta pasta. `PANEL_PROJECTS_DIRECTORY` deve conter os projetos que deseja vincular; é montado em somente leitura no painel para conferir os caminhos, nos mesmos endereços do host. Os containers PHP recebem suas montagens individuais com escrita conforme o Compose. Projetos fora dessa árvore precisam de montagem adicional no serviço `panel` para a validação dos caminhos.
+`PANEL_WORKSPACE_DIRECTORY` precisa ser o caminho absoluto **real no host** desta pasta. `PANEL_PROJECTS_DIRECTORY` deve conter os projetos que deseja vincular; é montado com escrita no painel para gerenciar arquivos dos projetos, nos mesmos endereços do host. Os containers PHP recebem suas montagens individuais com escrita conforme o Compose. Projetos fora dessa árvore precisam de montagem adicional no serviço `panel` para a validação dos caminhos.
 
 Para construir e subir tudo, incluindo o painel:
 
@@ -1761,7 +1957,7 @@ sudo docker compose logs --tail=100 panel
 ```
 
 > [!WARNING]
-> 🔐 O painel monta o socket Docker para administrar containers e a pasta da infraestrutura para atualizar configurações. Esse acesso equivale a privilégio administrativo no host. Mantenha o painel em `127.0.0.1`, use senha forte e não o publique diretamente na internet. Na VPS, prefira túnel SSH: `ssh -N -L 9090:127.0.0.1:9090 usuario@IP_DA_VPS`. O painel só oferece operações sobre serviços do projeto e não permite shell arbitrário ou exclusão de volumes, mas isso não reduz o privilégio do socket em caso de comprometimento do painel.
+> 🔐 O painel monta o socket Docker para administrar containers e a pasta da infraestrutura para atualizar configurações. Esse acesso equivale a privilégio administrativo no host. Mantenha a porta HTTP do painel em `127.0.0.1` e use senha forte. Para acesso remoto, siga [os modos de acesso e portas](#acesso-painel): túnel SSH ou proxy HTTPS. Exemplo de túnel SSH: `ssh -N -L 9090:127.0.0.1:9090 usuario@IP_DA_VPS`. O painel só oferece operações sobre serviços do projeto e não permite shell arbitrário ou exclusão de volumes, mas isso não reduz o privilégio do socket em caso de comprometimento do painel.
 
 ### 📝 Arquivo JSON de apontamentos
 
@@ -1964,6 +2160,10 @@ Os controles funcionam também para logs de workers e Scheduler. O serviço do p
 
 ### 💻 Executar comandos no container
 
+Na guia **Aplicações**, use o botão **Terminal** da aplicação desejada. Ele reutiliza o terminal interativo dos serviços e abre no container correspondente, em `/var/www/html` para PHP/Estática ou no diretório de trabalho configurado para Node.js. A aplicação precisa estar salva, habilitada, aplicada e com exatamente um container em execução. O backend utiliza o cadastro salvo, não os valores do rascunho.
+
+Não existe bloqueio de `cd ..`: a navegação segue as permissões e os arquivos disponíveis no container. Aplicações estáticas mantêm o volume do projeto somente leitura. Use um shell instalado na imagem. A funcionalidade exige administrador ou permissão explícita para o recurso, além de `PANEL_TERMINAL_ENABLED=true`, como o terminal dos serviços.
+
 O `.env` controla a disponibilidade:
 
 ```dotenv
@@ -1976,28 +2176,45 @@ Depois de alterar, recrie o painel. Para aplicar também o código novo:
 sudo docker compose up -d --build --no-deps panel
 ```
 
-O botão **Terminal** aparece em serviços em execução, exceto o próprio painel. Escolha `sh` ou `bash` e digite um comando, por exemplo:
+O botão **Terminal** aparece nos serviços gerenciáveis em execução. Clique nele, escolha `sh` ou `bash` e clique em **Conectar ao container**. A confirmação mostra o serviço, o shell e os impactos; depois de confirmar, **os comandos digitados executam diretamente, sem confirmação individual**, como em um terminal Linux.
+
+O terminal usa [xterm.js](https://xtermjs.org/) (licença MIT) e uma sessão **TTY do Docker**. A saída aparece continuamente, sem esperar o comando terminar. Antes de conectar, a tela mostra uma orientação em vez de um terminal vazio. Após conectar, digite diretamente na área escura ou use o campo **Comando ou resposta ao programa** e pressione Enter/Enviar. Para menus com setas e programas interativos, clique na área escura ou em **Focar terminal**. É possível responder a perguntas, selecionar opções com as setas, completar comandos com Tab e usar programas interativos disponíveis na imagem. Não é necessário instalar Node.js ou um agente no container de destino.
+
+- **Enter:** envia o comando ou a resposta ao prompt.
+- **Setas / Tab:** navegação e autocompletar, conforme o shell/programa.
+- **Ctrl+C:** interrompe o processo em primeiro plano; há também um botão equivalente.
+- **Ctrl+D ou `exit`:** encerra o shell.
+- **Maximizar:** aumenta a área e informa o novo tamanho ao TTY.
+- **Limpar visualização:** limpa a área visível, sem desfazer comandos.
+- **Exportar visualização:** baixa o texto disponível na tela e no histórico limitado do terminal; não é um registro completo de auditoria.
+
+A sessão abre **dentro do container selecionado**, com o usuário e diretório definidos pelo container. No PHP, `/var/www/html` corresponde ao volume da aplicação. `cd`, `export` e o histórico do shell persistem durante a sessão. Por exemplo:
 
 ```bash
 pwd
+cd /var/www/html
 php -v
 php artisan list
 php artisan migrate:status
 ```
 
-O comando executa **dentro do container selecionado**, com seu usuário e diretório de trabalho. No PHP, `/var/www/html` corresponde ao volume da aplicação. A interface mostra stdout, stderr e código de saída; permite limpar ou exportar a saída. Cada comando inicia um novo shell: `cd` ou `export` não persistem no próximo envio. Para combinar operações, use, por exemplo, `cd /var/www/html && php artisan list`.
+A imagem precisa fornecer o shell escolhido. Se `bash` não estiver instalado, use `sh`; recursos como autocompletar, histórico e editores dependem das ferramentas disponíveis. Para tarefas permanentes, cadastre workers/serviços em vez de manter um terminal aberto.
 
-É um console de comandos **não interativo**, sem terminal TTY. Não execute editores, prompts de senha, `tail -f`, workers contínuos ou processos em segundo plano. A imagem precisa fornecer o shell escolhido e `timeout`; imagens mínimas podem não ter essas ferramentas. O processo em primeiro plano tem limite de 25 segundos, com até dois segundos adicionais antes de encerramento forçado; a conexão Docker também tem limite. Limitar o comando não desfaz alterações já realizadas, nem garante encerramento de processos que se destacarem dele.
+Há uma sessão interativa ativa por instância do painel. O limite anterior de 25 segundos não se aplica ao TTY: a sessão encerra após **15 minutos sem entrada** ou **uma hora de duração**. Fechar a janela, desconectar, perder a conexão ou sair do painel encerra a sessão e envia HUP ao shell conhecido no container. Processos em segundo plano podem continuar; fechar o terminal não desfaz alterações. Reiniciar o container interrompe a sessão.
 
-Para Bash interativo completo e comandos longos, continue usando no host:
+O terminal exige administrador completo ou concessão explícita por aplicação/serviço, `PANEL_TERMINAL_ENABLED=true`, sessão autenticada e CSRF nas operações de entrada/controle. O backend verifica se o container está em execução e pertence ao serviço/projeto Compose; outra sessão de login não pode assumir o terminal aberto. Contas restritas só recebem os terminais selecionados pelo administrador; chaves MCP não recebem esse acesso. Enquanto o terminal estiver ativo, operações administrativas protegidas podem pedir que você o encerre antes.
+
+A comunicação usa a mesma origem HTTP/HTTPS do painel, com streaming e mensagens autenticadas; **não há porta pública adicional**. Proxies intermediários precisam permitir streaming sem buffering e conexões duradouras. Use os [modos de acesso seguros do painel](#acesso-painel).
+
+A auditoria registra quem abriu/encerrou a sessão e qual serviço foi usado, sem armazenar teclas ou saída. O shell e as ferramentas podem gravar seu próprio histórico dentro do container. Comandos e exportações podem conter informações sensíveis; eles executam com os privilégios do container e podem alterar arquivos do volume e dados da aplicação.
+
+Para usar o terminal pelo host, a alternativa continua sendo:
 
 ```bash
 sudo docker exec -it php bash
 ```
 
-Somente um comando pode executar pelo console de cada instância do painel por vez; ações administrativas de recriação aguardam seu término. O console usa as mesmas proteções de sessão e CSRF das demais operações e aceita apenas serviços deste projeto. Ainda assim, é uma funcionalidade administrativa: comandos podem alterar arquivos do volume e dados da aplicação. Não digite segredos literais, pois o comando aparece na tela e em exportações do console. O histórico não é salvo no cadastro JSON.
-
-Se não quiser permitir essa funcionalidade, defina `PANEL_TERMINAL_ENABLED=false` e recrie `panel`. Mantenha o painel em loopback/túnel SSH, conforme as instruções de acesso.
+Se não quiser permitir essa funcionalidade, defina `PANEL_TERMINAL_ENABLED=false` e recrie `panel`. Use túnel SSH ou proxy HTTPS, conforme as [instruções de acesso](#acesso-painel).
 
 ### 📋 Listagem e edição de aplicações no painel
 
@@ -2569,35 +2786,66 @@ Trocar o tipo recria o container e pode interromper acessos; não move o projeto
 
 ### 🎨 Identidade visual sobre o Bootstrap
 
-O painel mantém os componentes Bootstrap 6 e recebe uma personalização em `docker/panel/public/style.css`: tipografia de sistema, paletas próprias para claro/escuro, navegação com destaque discreto, botões com cantos moderados, campos com foco visível e tabelas compactas. A seção **Identidade do painel** concentra os tokens e os ajustes, sem modificar os arquivos do framework. A escolha de tema continua no perfil.
+O painel mantém os componentes Bootstrap 6. A estrutura está em `docker/panel/public/style.css` e a identidade visual compartilhada em `docker/panel/public/modern-ui.css`, carregado por último: tipografia de sistema, paletas próprias para claro/escuro, navegação com destaque discreto, botões com cantos moderados, campos com foco visível e tabelas compactas. A seção **Identidade do painel** concentra os tokens e os ajustes, sem modificar os arquivos do framework. A escolha de tema continua no perfil.
 
 Após modificar os estilos, aplique com `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Os fluxos, confirmações e configurações permanecem os mesmos.
 
 O menu de perfil no topo concentra a identificação da conta e a opção de sair. A aparência é selecionada por um switch **claro/escuro**, acessível por teclado, com estado anunciado a leitores de tela e preferência persistida. A opção Sistema não aparece mais no menu; preferências antigas seguem válidas até o usuário escolher explicitamente claro ou escuro.
 
-### 🌍 Acesso ao painel na VPS: porta ou subdomínio
+<a id="acesso-painel"></a>
 
-A seção **Proxy & acessos → Painel administrativo · acesso** configura a porta direta, o endereço de publicação, o subdomínio, HTTPS e cookie seguro. Após guardar o rascunho, salve o JSON e aplique. O Traefik é recriado nessa operação. **Para alterar a porta ou o cookie do próprio painel, finalize pelo terminal:**
+### 🌍 Como acessar o painel: local, túnel SSH ou URL pública
 
-```bash
-sudo docker compose up -d --no-deps --force-recreate panel
-```
+**O padrão é acesso local.** Na VPS, `localhost` significa a própria VPS; no seu navegador, significa seu computador. Para acessar remotamente, escolha túnel SSH ou publique uma rota HTTPS.
 
-Esse passo encerra a sessão atual e permite ao painel terminar a operação antes da própria recriação. Acesse o novo endereço e faça login novamente. Não remove volumes.
+| Forma de acesso | Endereço no navegador | Portas de entrada na VPS |
+| --- | --- | --- |
+| Infra rodando no seu computador | `http://localhost:9090` | Nenhuma porta pública adicional |
+| VPS com túnel SSH | `http://localhost:9090` após abrir o túnel | SSH, normalmente TCP 22; não abrir 9090 |
+| VPS com subdomínio HTTPS | `https://painel.seudominio.com` | TCP 80 e 443; SSH para manutenção |
+| IP e porta direta HTTP | `http://IP_DA_VPS:9090` | TCP 9090, restrita aos IPs autorizados; SSH para manutenção |
+| IP e porta HTTPS dedicada | `https://IP_DA_VPS:9443` | TCP 9443 para o painel, 80/443 para a configuração de certificados descrita abaixo |
 
-**Opção A — acesso direto por IP e porta**, por exemplo `http://IP_DA_VPS:9090`:
+Entre com `PANEL_USERNAME` e `PANEL_PASSWORD` do **`.env` da infraestrutura na VPS**. São credenciais do painel, diferentes das credenciais do SSH, do banco e da aplicação hospedada. Nunca use os valores de exemplo como senha real.
+
+#### 1. Acesso local ou por túnel SSH
+
+No `.env` da infraestrutura:
 
 ```dotenv
-PANEL_BIND_ADDRESS=0.0.0.0
+PANEL_BIND_ADDRESS=127.0.0.1
 PANEL_PORT=9090
 PANEL_PROXY_ENABLED=false
 PANEL_TLS_ENABLED=false
 PANEL_COOKIE_SECURE=false
 ```
 
-Libere a porta TCP escolhida no firewall da VPS/provedor, preferencialmente apenas para seus IPs. Esse acesso direto é HTTP; para login pela internet, prefira a opção HTTPS abaixo. Publicação em `127.0.0.1` mantém a porta restrita ao host, conforme a [documentação de portas do Docker](https://docs.docker.com/engine/network/port-publishing/).
+Na pasta da infraestrutura **na VPS**, aplique:
 
-**Opção B — subdomínio com HTTPS**, por exemplo `https://painel.seudominio.com`:
+```bash
+sudo docker compose config --quiet
+sudo docker compose up -d --no-deps --force-recreate panel traefik
+```
+
+Depois, **no terminal do seu computador**, abra o túnel:
+
+```bash
+ssh -N -L 9090:127.0.0.1:9090 -p 22 usuario@IP_DA_VPS
+```
+
+Use o usuário, a porta e a autenticação reais do SSH. Mantenha esse terminal aberto e acesse **http://localhost:9090** no navegador do seu computador. `Ctrl+C` encerra o túnel. O tráfego entre o computador e a VPS é criptografado pelo SSH, embora a URL local seja HTTP.
+
+Se a porta 9090 do seu computador estiver ocupada, use outra porta local:
+
+```bash
+ssh -N -L 19090:127.0.0.1:9090 -p 22 usuario@IP_DA_VPS
+```
+
+Nesse caso, abra **http://localhost:19090**. A porta do painel na VPS continua sendo 9090. Para a infraestrutura rodando no próprio computador, acesse diretamente http://localhost:9090, sem túnel.
+
+#### 2. Acesso por URL com subdomínio e HTTPS, sem túnel
+
+No `.env` da infraestrutura:
 
 ```dotenv
 PANEL_BIND_ADDRESS=127.0.0.1
@@ -2610,19 +2858,95 @@ HTTP_BIND_ADDRESS=0.0.0.0
 HTTP_PORT=80
 HTTPS_PORT=443
 TRAEFIK_TLS_ENABLED=true
-ACME_EMAIL=admin@seudominio.com
+ACME_EMAIL=seu-email@seudominio.com
 ```
 
-Crie um registro DNS A (e AAAA apenas se IPv6 estiver configurado) para o IP da VPS e permita TCP 80/443 no firewall. Escolha um domínio diferente das aplicações. O Traefik encaminha para `panel:3000` pela rede interna, redireciona HTTP para HTTPS e usa o mesmo resolvedor Let's Encrypt da infraestrutura. A porta 9090 pode continuar fechada externamente. A rota está em `docker/traefik/panel.yml`; a autenticação existente continua obrigatória.
+Aponte o DNS A do subdomínio para o IP da VPS. Crie AAAA apenas se o IPv6 estiver configurado. Escolha um subdomínio diferente dos usados pelas aplicações. Libere TCP **80 e 443** no firewall do provedor e do servidor. A porta 80 também é usada na emissão e renovação pelo desafio HTTP do Let's Encrypt.
 
-Se editar diretamente os apontamentos no `.env`, sincronize com `node docker/panel/runtime-cli.mjs --from-env` e recarregue o painel antes de salvar/aplicar configurações. Para aplicar diretamente pelo terminal:
+O Traefik recebe HTTPS em 443 e encaminha pela rede Docker para `panel:3000`. **Não libere 9090 nem 3000 publicamente.** A opção `PANEL_COOKIE_SECURE=true` protege o cookie; ela não emite certificado por si só.
+
+Depois de sincronizar e aplicar as configurações conforme a seção abaixo, acesse **https://painel.seudominio.com**. Não precisa abrir túnel SSH. As aplicações continuam compartilhando 80/443, com distribuição por domínio/subdomínio.
+
+#### 3. Acesso direto pelo IP em HTTP
+
+Para uma rede confiável ou acesso temporário restrito:
+
+```dotenv
+PANEL_BIND_ADDRESS=0.0.0.0
+PANEL_PORT=9090
+PANEL_PROXY_ENABLED=false
+PANEL_TLS_ENABLED=false
+PANEL_COOKIE_SECURE=false
+```
+
+Após aplicar, acesse **http://IP_DA_VPS:9090**. Libere TCP 9090 somente para os IPs autorizados. Esse modo transmite o login sem TLS; para acesso pela internet, use HTTPS ou túnel SSH. Não digite `0.0.0.0` no navegador: esse valor significa escutar nas interfaces do servidor.
+
+#### 4. Acesso pelo IP em HTTPS numa porta dedicada
+
+**Atenção à diferença entre o repositório local e a implantação:** a URL `https://IP_DA_VPS:9443` foi configurada especificamente na VPS. O Compose local ainda não declara essa entrada HTTPS dedicada; copiar apenas as variáveis abaixo para uma instalação nova não cria esse acesso.
+
+Na VPS adaptada, a configuração é:
+
+```dotenv
+PANEL_HTTPS_ENABLED=true
+PANEL_HTTPS_BIND_ADDRESS=0.0.0.0
+PANEL_HTTPS_PORT=9443
+PANEL_BIND_ADDRESS=127.0.0.1
+PANEL_PORT=9090
+PANEL_PROXY_ENABLED=false
+PANEL_COOKIE_SECURE=true
+```
+
+Esse modo depende também da publicação `9443:9443` no serviço Traefik, da entrada `panelwebsecure`, da rota `docker/traefik/panel-port.yml` para `panel:3000` e de um certificado válido para o IP. A VPS usa o certificado padrão definido em `docker/traefik/ip-certificate.yml`, com perfil ACME `shortlived`, `disableCommonName` e renovação ajustada para 160 horas. Os certificados para IP têm validade curta; preserve o volume ACME e o acesso de validação nas portas 80/443. Consulte o README da implantação para esses arquivos e opções específicos.
+
+Libere **TCP 9443** no provedor e no servidor. Acesse **https://IP_DA_VPS:9443**, sem túnel. O certificado usado pela aplicação na porta 443 pode atender ao mesmo IP na 9443, mas **ativar HTTPS na aplicação não publica o painel automaticamente**. A porta HTTP 9090 continua restrita ao host.
+
+#### Aplicar mudanças e evitar sobrescrever os apontamentos
+
+A área **Proxy & acessos → Painel administrativo · acesso** configura a publicação direta e por subdomínio. Salve e aplique as configurações. As opções da porta HTTPS dedicada da VPS são uma personalização separada, não campos disponíveis nessa tela local.
+
+Se editar diretamente o `.env`, o painel pode ainda ter valores anteriores em `config/apps.json`. Para tornar o `.env` a fonte dos apontamentos, execute na pasta da infraestrutura (com Node.js disponível):
 
 ```bash
-sudo docker compose up -d --no-deps --force-recreate traefik panel
+node docker/panel/runtime-cli.mjs --from-env
 ```
 
-Ao migrar de HTTP para HTTPS, abra o endereço HTTPS após a recriação; cookies seguros não funcionam por HTTP. Mantenha `PANEL_USERNAME` e `PANEL_PASSWORD` configurados e não publique o socket Docker nem a porta interna 3000 separadamente.
+Esse comando recria os apontamentos das aplicações a partir das variáveis do `.env`; confira antes se todas as aplicações cadastradas estão representadas nele. Ele não migra dados. Recarregue o painel antes de salvar novamente.
 
+Para aplicar portas, rotas e cookie do painel:
+
+```bash
+sudo docker compose config --quiet
+sudo docker compose up -d --no-deps --force-recreate traefik panel
+sudo docker compose ps -a
+sudo docker compose logs --tail=100 traefik panel
+```
+
+As mudanças de configuração não exigem rebuild das imagens. A recriação encerra sessões do painel e interrompe brevemente o proxy; faça login novamente no endereço correto. Os volumes são preservados. Não use `down -v`.
+
+Ao acessar via HTTPS, use `PANEL_COOKIE_SECURE=true`. Ao usar HTTP local ou túnel para HTTP, use `false`. Cookie seguro não funciona por HTTP. Se alterar a porta interna do host em `PANEL_PORT`, atualize também o destino do túnel.
+
+#### Portas e regras de acesso
+
+- **SSH (TCP 22 por padrão):** necessário para manutenção e túnel. Se usar outra porta, ajuste o comando e o firewall; preserve uma sessão SSH aberta ao alterar regras.
+- **TCP 80 e 443:** entrada pública das aplicações e do painel por subdomínio, além da validação dos certificados conforme o desafio configurado.
+- **TCP 9443:** somente se a entrada HTTPS dedicada do painel estiver configurada; não é necessária para subdomínio ou túnel.
+- **TCP 9090:** não precisa ser pública com túnel ou proxy HTTPS. Só abra no modo direto, com restrição de origem.
+- **TCP 3000 e portas internas das aplicações:** não precisam ser publicadas; o Traefik utiliza a rede Docker.
+- **MariaDB 3306, PostgreSQL 5432, Valkey 6379 e phpMyAdmin 8081:** não precisam ficar públicos para o painel funcionar. Mantenha-os na rede interna ou em loopback conforme a configuração de cada serviço.
+
+Nenhuma configuração deste projeto abre o firewall do provedor nem cria DNS automaticamente. Confira o firewall do provedor e as regras efetivas do host: a publicação de portas pelo Docker pode contornar regras simples do UFW. Consulte [a documentação oficial do Docker](https://docs.docker.com/engine/network/packet-filtering-firewalls/).
+
+#### Se o painel não abrir
+
+| Sintoma | O que conferir |
+| --- | --- |
+| `localhost:9090` não abre no computador | Túnel ativo, porta local livre e container `panel` em execução na VPS |
+| IP e porta não respondem | Porta publicada no Compose, endereço de bind, firewall do host e do provedor |
+| HTTPS falha ou aparece alerta de certificado | Certificado válido para o domínio/IP, porta HTTPS correta e logs do Traefik; não ignore o alerta |
+| HTTP funciona, mas login não mantém a sessão | Confira `PANEL_COOKIE_SECURE`; use HTTPS se estiver `true` |
+| URL abre a aplicação em vez do painel | Confira subdomínio/porta e a rota do painel; a aplicação e o painel têm destinos diferentes |
+| Alterações voltam ao valor antigo | Confira a sincronização entre `.env` e `config/apps.json` antes de salvar pelo painel |
 
 <a id="cadastrar-aplicacoes"></a>
 
@@ -2721,7 +3045,7 @@ Antes de executar alterações pelo painel, a confirmação mostra **Comandos e 
 - Gravações internas de arquivos, cofre e sessão identificadas como operações internas, sem inventar comandos de shell.
 - Operações locais da interface identificadas como locais, quando não há execução no servidor.
 
-A prévia é calculada no backend antes de confirmar e **não executa comandos**. Identificadores gerados, validações e condições podem ser resolvidos na execução; essas etapas são descritas no resumo. Comandos usam o diretório da infraestrutura, seu `.env` e os arquivos Compose configurados. Senhas, argumentos de jobs e o conteúdo do comando de terminal são ocultados para evitar reproduzir credenciais nos resumos. O comando de terminal continua visível no formulário em que foi informado.
+A prévia é calculada no backend antes de confirmar e **não executa comandos**. Identificadores gerados, validações e condições podem ser resolvidos na execução; essas etapas são descritas no resumo. Comandos usam o diretório da infraestrutura, seu `.env` e os arquivos Compose configurados. Senhas, argumentos de jobs e o conteúdo do comando de terminal são ocultados para evitar reproduzir credenciais nos resumos. O console legado preserva essa ocultação; no terminal interativo, a aprovação acontece ao abrir a sessão e os comandos posteriores executam diretamente.
 
 Para aplicar a atualização do painel:
 
@@ -3138,7 +3462,7 @@ Na criação e redefinição de senha, use **Gerar senha** ou informe uma senha 
 
 Contas restritas recebem uma interface própria, com somente os serviços, monitoramento e backups autorizados. Não carregam as telas administrativas. A API valida o usuário e a versão de suas permissões em todas as requisições autenticadas, nega por padrão os outros endpoints e filtra recursos antes de responder. Alterar o HTML ou chamar uma URL administrativa diretamente não concede acesso.
 
-Operar um serviço permite ver seu estado mínimo para escolher a ação. A permissão de controle não concede terminal, edição de `.env`, gestão de pacotes, contas de banco, chaves de API ou configuração do host. Filas e agendadores e o próprio serviço `panel` não podem ser operados por essas contas; use administração completa para essas áreas. Aplicações desabilitadas não podem ser iniciadas ou reiniciadas pela operação de serviço.
+Operar um serviço permite ver seu estado mínimo para escolher a ação. A permissão de controle não concede terminal automaticamente (é necessária concessão separada), edição de `.env`, gestão de pacotes, contas de banco, chaves de API ou configuração do host. Filas e agendadores e o próprio serviço `panel` não podem ser operados por essas contas; use administração completa para essas áreas. Aplicações desabilitadas não podem ser iniciadas ou reiniciadas pela operação de serviço.
 
 O backup delegado força **um único banco**, `BACKUP_RETENTION_DAYS=0` e `BACKUP_REMOTE_ENABLED=false`, sem aceitar diretório ou opções adicionais do usuário. Isso evita executar retenção global ou upload de outras cópias. O modo `delegated-once` também preserva os marcadores globais de sucesso/falha da agenda. Uma imagem de backup antiga recusa esse modo até ser atualizada, em vez de executar um ciclo global. Usa o destino local administrado da infraestrutura. A consulta exibe apenas arquivos individuais com banco e timestamp identificáveis, dentre os 30 backups mais recentes por servidor; cópias mais antigas ou dumps globais não são listados nesse acesso. Permissão de backup não permite alterar/remover bancos, importar SQL ou apagar backups.
 
@@ -3210,3 +3534,130 @@ docker compose config --services
 ```
 
 Esta opção escolhe os **serviços locais**, sem migrar dados ou trocar automaticamente o driver da aplicação. Para PostgreSQL ou um servidor externo, ajuste conexão, host, porta e credenciais da aplicação e verifique as variáveis `DB_*` injetadas pelo serviço PHP no Compose, que mantêm o padrão MariaDB. As portas de publicação continuam em `MARIADB_BIND_ADDRESS`/`MARIADB_PORT` e `POSTGRES_BIND_ADDRESS`/`POSTGRES_PORT`. Requer Docker Compose com suporte a dependências opcionais (`required: false`, versão 2.20 ou posterior).
+
+### 🔑 Conceder acesso a terminais por usuário
+
+Em **Administração → Usuários e permissões**, crie ou edite um usuário. Para conceder somente terminais, mantenha **Administrador completo** desmarcado:
+
+1. Marque **Abrir terminal nas aplicações selecionadas** e escolha os campos **Terminal da aplicação** desejados.
+2. Para terminais de serviços, marque **Abrir terminal nos serviços selecionados** e escolha os campos **Terminal do serviço**.
+3. Salve e confirme os impactos. O usuário verá a guia **Terminais autorizados**, com somente os recursos liberados.
+
+As seleções de terminal são independentes de monitoramento, logs, iniciar/parar/reiniciar e backup. Não é necessário conceder acesso às demais páginas administrativas. Usuários existentes continuam sem terminal até receberem a permissão; administradores continuam com acesso completo. `PANEL_TERMINAL_ENABLED=false` desativa o recurso para todos.
+
+O backend verifica a permissão em cada conexão e o dono da sessão ao transmitir dados. Alterar permissões, senha ou estado do usuário invalida o login anterior e encerra imediatamente seus terminais abertos. A sessão é também revalidada periodicamente enquanto transmite saída.
+
+**Conceder terminal permite comandos livres no container**, incluindo ler `.env`, variáveis e credenciais acessíveis, alterar arquivos e acessar bancos permitidos pelas credenciais do container. Não há restrição por diretório ou por comando; as demais permissões do painel não limitam o que um shell pode fazer. Terminal de aplicação e terminal do seu serviço podem representar o mesmo container, com o mesmo poder de execução. Escolha recursos de confiança e conceda apenas o necessário.
+
+Para aplicar a atualização local:
+
+```bash
+sudo docker compose up -d --build --force-recreate --no-deps panel
+```
+
+Recarregue com Ctrl+Shift+R. Não altera volumes nem bancos.
+
+### ✨ Interface modernizada
+
+A identidade visual usa uma barra lateral grafite com busca de páginas, conteúdo com superfícies e bordas discretas, tabelas consistentes, botões padronizados e modais com melhor hierarquia. Os temas claro e escuro continuam disponíveis no perfil; a preferência é preservada no navegador. A navegação de usuários restritos segue as mesmas regras visuais e de permissões.
+
+No celular, toque em **Menu** para abrir a navegação. Selecione uma página, toque fora do menu ou pressione Escape para fechar. As tabelas largas têm rolagem horizontal e os formulários se reorganizam em uma coluna. A busca do menu administrativo encontra páginas pelo nome e pelo grupo, inclusive sem acentos.
+
+Os estilos visuais ficam em `docker/panel/public/modern-ui.css`, sem modificar o Bootstrap distribuído. As operações, dados e configurações existentes são preservados. Para atualizar o painel local:
+
+```bash
+sudo docker compose up -d --build --force-recreate --no-deps panel
+```
+
+Depois recarregue com **Ctrl+Shift+R**. O comando recria somente o painel, encerra suas sessões e preserva volumes e dados. Não basta `restart` para atualizar o código da imagem.
+
+### 🧩 Central de aplicativos da infraestrutura
+
+A página inicial reúne os módulos do menu em cards com ícones, descrições e cores por área: Workspace, PHP, Node.js, Processos, Dados, Monitoramento, Administração e Integrações. Clique em um card para abrir a ferramenta ou use **Buscar módulo ou ferramenta**. A busca aceita termos sem acentos.
+
+Os indicadores do topo mostram o resumo da infraestrutura; a tabela completa de containers fica em **Serviços**. O sidebar continua disponível e o botão inicial **Central de aplicativos** volta a esta tela. Contas restritas continuam visualizando apenas os recursos autorizados, sem acesso à central administrativa completa. Os cards não iniciam nem instalam serviços: apenas navegam para as páginas existentes.
+
+<a id="console-sql"></a>
+
+### 🧮 Console SQL: consultar e executar no banco
+
+Em **Dados → Bancos de dados**, selecione MariaDB ou PostgreSQL e clique em **Console SQL** na linha do banco. A janela abre com esse banco selecionado e permite trocar entre os bancos de aplicação listados naquele SGBD.
+
+1. O console busca uma **conexão automática** para o banco selecionado. Se houver credencial de aplicação no `.env` ou senha registrada no cofre com acesso ao banco, a conta é selecionada sem digitar a senha. Para usar outra conta, escolha **Informar outra conta manualmente**. Contas administrativas/de sistema e contas com privilégios globais/administrativos são recusadas pelo console.
+2. Digite **uma instrução SQL por execução**. Clique em **Executar SQL** ou use **Ctrl+Enter** e confirme o resumo e os impactos.
+3. Um `SELECT` retorna uma tabela com nomes das colunas, valores, `NULL`, quantidade de linhas e tempo de execução. Comandos sem linhas retornadas mostram o total de linhas afetadas.
+4. Use a busca para filtrar as linhas já carregadas. **Exportar CSV** baixa apenas esse resultado, não o banco inteiro.
+
+Exemplos (substitua a tabela/colunas pelas existentes no projeto):
+
+```sql
+SELECT 1 AS teste;
+```
+
+```sql
+SELECT id, name FROM users ORDER BY id DESC LIMIT 50;
+```
+
+```sql
+UPDATE users SET name = 'Novo nome' WHERE id = 123;
+```
+
+As alterações dependem dos privilégios da conta usada. Para consultar sem permitir alterações, crie uma conta **somente leitura** em **Usuários dos bancos → Gerenciar acesso**. O console não classifica um comando como seguro apenas por começar com SELECT: funções e outras instruções podem ter efeitos conforme as permissões do banco.
+
+**Limites e comportamento:**
+
+- Até **15 segundos**, **500 linhas**, **100 colunas** e aproximadamente **1 MiB** de valores retornados. Células acima de 8 KiB são abreviadas; o SQL tem limite de 64 KiB.
+- Ao atingir um limite de resultado, a conexão é encerrada e o resultado é marcado como limitado. Use `WHERE` e `LIMIT` para obter um recorte menor. O driver ainda precisa receber cada valor do protocolo antes de abreviá-lo; esses limites não representam um teto rígido de memória do servidor SQL.
+- Cada execução abre uma conexão nova. `BEGIN`, variáveis de sessão, tabelas temporárias e transações não continuam entre cliques. Scripts com várias instruções, COPY via protocolo e procedimentos com múltiplos conjuntos de resultados não fazem parte deste console; use a área de importação/exportação ou um cliente dedicado.
+- Comandos podem alterar/excluir dados e estruturas conforme os privilégios da conta. Selecionar um banco não restringe acessos a outros bancos/schemas já permitidos à conta. Não há desfazer automático; erro, timeout ou desconexão podem deixar alterações parciais ou já confirmadas. Confira o estado antes de repetir.
+- O SQL, a senha e o resultado ficam somente na janela; não são salvos como histórico do painel. A auditoria guarda ator, SGBD, banco, usuário, hash do SQL e desfecho, sem gravar o SQL completo nem a senha. O próprio SGBD pode registrar consultas conforme sua configuração.
+- O CSV contém somente as linhas retornadas, inclusive abreviações. Textos que poderiam ser interpretados como fórmulas recebem proteção ao exportar para planilhas. Preserve o arquivo como informação sensível.
+
+O recurso exige **administrador completo do painel**, sessão válida e CSRF. Permissões de monitoramento, backups ou terminais não concedem a API SQL. A conexão utiliza somente `mariadb:3306` ou `postgres:5432` na rede Docker, sem publicar portas adicionais e sem executar comandos de shell. Os drivers mysql2 e node-postgres são open source, com versões exatas no lock e licenças registradas em `config/dependencies.licenses.json`.
+
+Para atualizar o painel local com os drivers e a interface:
+
+```bash
+sudo docker compose up -d --build --force-recreate --no-deps panel
+```
+
+Recarregue com **Ctrl+Shift+R**. Nenhuma consulta é executada durante o build e os volumes são preservados. Para arquivos grandes, consulte a área **Importar / exportar SQL**; para recuperação, utilize os [backups](#backup-automatico).
+
+#### 🔐 Credenciais automáticas do console SQL
+
+Ao abrir o console ou trocar de banco, o painel lista somente fontes disponíveis para aquele banco:
+
+- **MariaDB / `.env` da infraestrutura:** `DB_DATABASE`, `DB_USERNAME` e `DB_PASSWORD` para o banco principal; também os grupos explícitos `APP_N_DB_DATABASE`, `APP_N_DB_USERNAME` e `APP_N_DB_PASSWORD` das aplicações adicionais. O nome do banco precisa corresponder ao selecionado.
+- **Cofre do painel / MariaDB e PostgreSQL:** contas de aplicação com senha definida pelo painel e concessão de acesso ao banco. Crie ou altere a senha em **Usuários dos bancos** e conceda o acesso em **Gerenciar acesso**. A criação do banco, sozinha, não cria automaticamente uma credencial.
+
+O navegador recebe apenas a identificação da conta e sua origem. A senha é lida no servidor na hora da execução e não é preenchida no HTML, enviada na listagem ou salva no histórico SQL. No PostgreSQL, `POSTGRES_USER`/`POSTGRES_PASSWORD` correspondem à conta administrativa da infraestrutura e não são reutilizados automaticamente.
+
+Se não houver fonte elegível, o console permite informar uma conta manualmente. Contas externas com senhas desconhecidas não podem ser recuperadas pelo painel; contas bloqueadas e administrativas não são sugeridas pelo cofre. Se uma senha do `.env` estiver desatualizada em relação ao banco, a conexão falhará até sincronizar a senha real — editar o arquivo não altera a senha dentro do SGBD. A disponibilidade da credencial não substitui os privilégios concedidos pelo próprio banco.
+
+### 🍎 Visual e movimento inspirados no macOS/iOS
+
+A camada `docker/panel/public/apple-ui.css` personaliza os componentes Bootstrap com superfícies translúcidas, campos arredondados, ícones SVG locais em blocos coloridos, botões com relevo discreto e foco azul. A fonte é a de sistema, com alternativas para Linux e Windows; o projeto não distribui fontes nem ícones proprietários da Apple.
+
+Os modais abrem com deslocamento, escala e desfoque (aproximadamente 420 ms), e fecham com animação antes da remoção da janela (230 ms), inclusive após salvar ou cancelar. Confirmações, teclado, foco e a montagem do terminal são preservados. A navegação entre páginas recebe uma transição de entrada de aproximadamente 380 ms, sem recriar as configurações de cada página.
+
+A preferência **Reduzir movimento** do sistema/navegador desativa essas animações e mantém abertura/fechamento imediatos. A preferência de transparência reduzida é respeitada quando suportada pelo navegador. Os temas claro e escuro continuam no menu de perfil.
+
+Para aplicar ao painel local:
+
+```bash
+sudo docker compose up -d --build --force-recreate --no-deps panel
+```
+
+Depois pressione Ctrl+Shift+R. A atualização não altera a VPS, bancos ou volumes.
+
+### Cabeçalhos e listas compactas do painel
+
+Os indicadores exibem rótulo e valor lado a lado. As listas baseadas no componente compartilhado reúnem busca, filtros, ações, ajuda contextual e contagem de resultados na barra acima da tabela. Em **Aplicações** (inclusive Node), **Nova aplicação** permanece visível; **Salvar configurações** e **Aplicar configuração** ficam no menu **Configurações**, junto ao estado do rascunho. A confirmação e as regras de aplicação das mudanças continuam as mesmas. Os menus fecham ao clicar fora ou pressionar Escape e podem ser operados pelo teclado.
+
+Para aplicar a atualização visual, execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador com Ctrl+Shift+R.
+
+### Versão do painel
+
+A versão aparece ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, inicialmente `1.0.0`. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
+
+Para registrar uma nova versão, use `npm --prefix docker/panel version 1.0.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do painel e não altera versões das imagens ou das aplicações hospedadas.
