@@ -4,11 +4,13 @@ set -eu
 JUBART_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 JUBART_BIN=/usr/local/bin
 JUBART_START=true
+JUBART_INTERACTIVE=true
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --bin-dir) [ "$#" -ge 2 ] || { echo 'Informe o diretório de comandos.' >&2; exit 1; }; JUBART_BIN=$2; shift 2 ;;
     --no-start) JUBART_START=false; shift ;;
-    --help) echo 'Uso: ./install.sh [--bin-dir DIRETORIO] [--no-start]'; echo 'Prepara .env, instala o comando jubart e constrói/inicia somente o painel.'; exit 0 ;;
+    --non-interactive) JUBART_INTERACTIVE=false; shift ;;
+    --help) echo 'Uso: ./install.sh [--bin-dir DIRETORIO] [--no-start] [--non-interactive]'; echo 'Pergunta os dados iniciais, prepara .env, instala jubart e inicia somente o painel.'; echo '--non-interactive preserva valores existentes e gera credenciais quando necessário.'; exit 0 ;;
     *) echo 'Opção desconhecida. Use ./install.sh --help.' >&2; exit 1 ;;
   esac
 done
@@ -16,7 +18,9 @@ cd "$JUBART_ROOT"
 for JUBART_TOOL in docker python3 readlink; do
   command -v "$JUBART_TOOL" >/dev/null 2>&1 || { echo "Instale $JUBART_TOOL antes de continuar." >&2; exit 1; }
 done
+python3 -c 'import ssl, zoneinfo; zoneinfo.ZoneInfo("UTC"); assert ssl.create_default_context().get_ca_certs(), "Instale ca-certificates no host."' || { echo 'Python 3.9+ com SSL, dados de fuso horário (tzdata) e ca-certificates são necessários. Consulte o README.' >&2; exit 1; }
 docker compose version >/dev/null
+docker buildx version >/dev/null || { echo 'Instale o plugin Docker Buildx. Consulte o README.' >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo 'Docker indisponível. Inicie o daemon e conceda acesso ao seu usuário.' >&2; exit 1; }
 case "$JUBART_BIN" in /*) ;; *) echo '--bin-dir precisa ser um caminho absoluto.' >&2; exit 1 ;; esac
 JUBART_LINK=$JUBART_BIN/jubart
@@ -28,13 +32,17 @@ if [ ! -d "$JUBART_BIN" ] || [ ! -w "$JUBART_BIN" ]; then
   echo "A instalação do comando em $JUBART_BIN requer permissão administrativa."
   sudo -v
 fi
+if [ "$JUBART_INTERACTIVE" = true ]; then
+  python3 scripts/install-wizard.py
+fi
 JUBART_NODE_IMAGE=$(sed -n 's/^NODE_VERSION=//p' .env.example)
 [ -n "$JUBART_NODE_IMAGE" ] || { echo 'Imagem de inicialização não encontrada.' >&2; exit 1; }
 echo 'Preparando configuração local; valores personalizados serão preservados…'
 docker run --rm --user "$(id -u):$(id -g)" -v "$JUBART_ROOT:/workspace" -w /workspace -e "JUBART_HOST_DIRECTORY=$JUBART_ROOT" "node:$JUBART_NODE_IMAGE" node scripts/initialize-local.mjs
 if [ "$JUBART_START" = true ]; then
   echo 'Construindo e iniciando o painel Jubart…'
-  docker compose up -d --build --no-deps panel
+  docker compose up -d --build --no-deps panel || { echo 'Falha ao construir/iniciar o painel. Consulte a seção Erros de instalação no README; para x509 verifique os certificados do host e do painel.' >&2; exit 1; }
+  docker compose exec -T panel sh -c 'test -s /etc/ssl/certs/ca-certificates.crt' || { echo 'Certificados ausentes no painel. Confira o Dockerfile e recompile; consulte o README.' >&2; exit 1; }
 fi
 if [ -d "$JUBART_BIN" ] && [ -w "$JUBART_BIN" ]; then
   ln -sfn -- "$JUBART_ROOT/jubart" "$JUBART_LINK"

@@ -39,3 +39,5 @@ test('novas aplicações PHP/Node/Estática geram serviços, perfis e rotas inde
  assert.ok(result.services['php-app4'].build);assert.equal(result.services['php-app4'].environment.DB_USERNAME,'app4');assert.equal(result.services['php-app4'].environment.DB_PASSWORD,'');assert.match(result.services['php-app5'].image,/^node:/);assert.match(result.services['php-app6'].image,/^caddy:/);assert.deepEqual(result.services['php-app4'].profiles,['app4']);
  }finally{await fs.unlink(file);}
 });
+
+test('rotas sem aplicações extras omitem mapas vazios rejeitados pelo Traefik',async()=>{const {extraAppRoutes}=await import('../runtimes.mjs');assert.deepEqual(JSON.parse(extraAppRoutes(fromEnv({}))),{});});

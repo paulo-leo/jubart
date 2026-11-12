@@ -185,6 +185,30 @@ A estrutura permite combinar aplicações PHP, processos Node.js e sites estáti
 
 ## 🚀 Instalação e configuração rápida
 
+### Dependências do host
+
+Use Linux com Docker Engine, plugin Docker Compose v2 ou superior, plugin Buildx e acesso ao daemon pelo usuário que instala. São necessários **Python 3.9+ com SSL**, `ca-certificates`, `tzdata`, shell POSIX e ferramentas usuais (`readlink`, `sed`, `id`, `ln`). Python costuma vir no Ubuntu, mas não é garantido em toda VPS. Git é necessário para clonar/atualizar; Node.js/npm e PHP não precisam estar instalados no host.
+
+Em Ubuntu/Debian, para os utilitários do host:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 ca-certificates tzdata git
+sudo update-ca-certificates
+```
+
+Instale o Docker Engine e os plugins seguindo o [guia oficial para Ubuntu](https://docs.docker.com/engine/install/ubuntu/) ou a documentação da sua distribuição. Não misture pacotes de origens diferentes. Verifique antes de instalar o Jubart:
+
+```bash
+python3 --version
+docker version
+docker compose version
+docker buildx version
+docker info
+```
+
+O instalador verifica as dependências e os certificados de confiança do host; não instala pacotes do sistema nem altera as permissões do socket Docker automaticamente. O acesso ao Docker concede controle administrativo sobre o host.
+
 ### Instalação automática recomendada
 
 Clone ou baixe este repositório e abra um terminal na pasta que contém `compose.yaml` e `install.sh`. No Linux, com **Docker Engine/Compose v2 e Python 3** disponíveis e Docker acessível pelo seu usuário, execute na raiz do projeto:
@@ -193,13 +217,51 @@ Clone ou baixe este repositório e abra um terminal na pasta que contém `compos
 ./install.sh
 ```
 
+Na primeira instalação, o assistente pergunta **usuário e senha do painel**, **pasta dos projetos**, **porta HTTP**, **acesso local/túnel ou HTTP público**, **fuso horário** e se deseja **MariaDB e PostgreSQL**. A senha é digitada sem eco, confirmada e salva no `.env` com permissão `600`, sem aparecer na saída. Use 16 a 128 caracteres e pelo menos três grupos entre maiúsculas, minúsculas, números e símbolos; nesta versão, não use aspas simples. Você revisa os dados antes de salvar.
+
+A pasta dos projetos pode ficar fora do Jubart: para `/var/www/sspa-server`, informe `/var/www` como pasta dos projetos. O painel compartilhará essa pasta para acessar as aplicações; não é preciso mover o código para o repositório.
+
 O instalador prepara `.env`, caminhos e credenciais iniciais, constrói/inicia **somente o painel** e instala automaticamente o comando `jubart` em `/usr/local/bin`. Não exige Node.js no host: a preparação usa a imagem Node fixada no exemplo. Pode solicitar `sudo` apenas para instalar o atalho global. Execute como dono do repositório; não é necessário rodar todo o instalador com `sudo`.
 
-Credenciais personalizadas e configurações existentes são preservadas. O instalador não abre firewall, instala Docker/Python, transfere código nem inicia todas as aplicações/bancos. Conclua esses apontamentos pelo assistente. Na primeira entrada, consulte `PANEL_USERNAME` e `PANEL_PASSWORD` no `.env`; o instalador não imprime os segredos.
+Credenciais personalizadas e configurações existentes são preservadas; ao detectar uma instalação já configurada, o assistente não sobrescreve esses dados. Para automações sem perguntas, use `./install.sh --non-interactive`: valores personalizados são mantidos e senhas de exemplo são substituídas por valores aleatórios. `--no-start` prepara a configuração e o comando sem iniciar o painel; combine com `--non-interactive` quando necessário. O instalador não abre firewall, instala Docker/Python, transfere código nem inicia todas as aplicações/bancos. Conclua esses apontamentos pelo assistente. Na primeira entrada, consulte `PANEL_USERNAME` e `PANEL_PASSWORD` no `.env`; o instalador não imprime os segredos.
+
+<a id="erros-instalacao"></a>
+
+### Erros de instalação e tratamentos
+
+| Mensagem/sintoma | O que verificar e como tratar |
+| --- | --- |
+| `python3: not found` | Instale Python 3.9+ no host; ele é usado pelo instalador e CLI Jubart. |
+| Docker indisponível ou `permission denied` no socket | Confira `docker info`, o serviço Docker e o acesso do usuário. Não use `chmod 666` no socket. |
+| Compose ou Buildx ausente | Instale os plugins correspondentes à instalação do Docker Engine. |
+| `x509: certificate signed by unknown authority` ao buscar token no Docker Hub | Diferencie certificados do host, do painel e de builders externos; siga o diagnóstico abaixo. |
+| Diretório da aplicação não existe, mas existe na VPS | A pasta precisa estar visível no contêiner do painel: configure `PANEL_PROJECTS_DIRECTORY` com a pasta-pai, como `/var/www`, e recrie o painel. |
+| Painel não abre pelo IP | O padrão local usa `127.0.0.1`; use túnel SSH ou configure HTTP público e libere a porta no firewall do host/provedor. |
+
+**Certificados no build:** o Dockerfile do painel copia o conjunto de CAs da imagem Docker CLI fixada no repositório. Isso fornece confiança para o Buildx acessar `auth.docker.io`; o instalador verifica se o arquivo está presente após iniciar o painel. A correção foi validada em VPS com um build de FrankenPHP iniciado de dentro do painel. Não é necessário configurar HTTPS do Traefik para baixar imagens.
+
+Em uma instalação antiga, atualize o código e recompile **pelo terminal da VPS**, na pasta do Jubart:
+
+```bash
+docker compose up -d --build --no-deps panel
+docker compose exec -T panel sh -c 'test -s /etc/ssl/certs/ca-certificates.crt && echo Certificados-presentes'
+```
+
+Se continuar falhando, confira a data/hora (`timedatectl status`), atualize `ca-certificates` no host e teste o mesmo build pelo terminal. Se o terminal funciona e o painel falha, investigue o ambiente do painel/Buildx. Se ambos falham, investigue a confiança TLS do host/daemon, a rede e o builder. Um builder separado também pode precisar de CAs próprias.
+
+Proxies corporativos com inspeção HTTPS exigem a CA legítima do proxy no host e nos ambientes que fazem as conexões. Não desative TLS nem use registros inseguros como solução. Veja [CAs no Docker](https://docs.docker.com/engine/network/ca-certs/) e [certificados do BuildKit](https://docs.docker.com/build/buildkit/configure/). Uma atualização do código não resolve certificados privados de rede automaticamente.
+
+**Pasta externa:** se o código está em `/var/www/sspa-server`, ajuste no `.env` do Jubart `PANEL_PROJECTS_DIRECTORY=/var/www`, mantenha no cadastro o diretório `/var/www/sspa-server` e execute:
+
+```bash
+docker compose up -d --no-deps --force-recreate panel
+```
+
+A raiz pública `/var/www/html/public` é o caminho dentro do contêiner PHP, diferente do caminho do host. `localhost` como domínio só atende esse hostname; para a VPS, configure o domínio/IP apropriado.
 
 ### Primeiro acesso e configuração em poucos passos
 
-1. Abra **http://localhost:9090** no computador em que o Jubart foi instalado. Entre com `PANEL_USERNAME` e `PANEL_PASSWORD` do `.env` gerado. O padrão é **HTTP por porta**, com acesso local; não exige domínio ou certificado.
+1. Abra **http://localhost:9090** no computador em que o Jubart foi instalado (ou a porta escolhida no instalador; em modo público, use o IP da VPS). Entre com `PANEL_USERNAME` e `PANEL_PASSWORD` do `.env` gerado. O padrão é **HTTP por porta**, com acesso local; não exige domínio ou certificado.
 2. Entre em **Administração → Assistente de configuração → Preparar meu ambiente**. Revise acesso/portas, tipo da aplicação, domínio e pasta do projeto no host. Para Laravel, a raiz pública normalmente é `/var/www/html/public`; outros projetos podem usar outra pasta pública.
 3. Se usar os bancos locais, inicie os serviços desejados antes de testar a conexão:
 
@@ -227,7 +289,8 @@ O instalador inicia somente o painel; a aplicação e os bancos passam a funcion
 | MariaDB e PostgreSQL | Habilitados no modelo, iniciados quando solicitados |
 | Backups automáticos | Desativados |
 | Mercure e WebSockets | Desativados; ativação por aplicação no painel |
-| Senhas e chave do cofre | Geradas localmente pelo inicializador |
+| Senha do painel | Escolhida no assistente; gerada no modo não interativo |
+| Outras senhas e chave do cofre | Geradas localmente pelo inicializador |
 
 **Vai instalar diretamente na VPS?** Use o [primeiro acesso por SSH ou IP](#primeiro-acesso-vps). `localhost` no navegador aponta para o seu computador, não para a VPS. Para HTTP por IP, publique a porta do painel em `0.0.0.0` e libere essa porta TCP no firewall da VPS e do provedor. O Jubart não abre o firewall automaticamente.
 

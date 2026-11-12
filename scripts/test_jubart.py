@@ -242,12 +242,14 @@ class JubartTest(unittest.TestCase):
         installed.mkdir()
         log = self.root / 'calls.log'
         env = {**os.environ, 'PATH':str(fake_bin)+':'+os.environ['PATH'], 'JUBART_TEST_LOG':str(log)}
-        result = subprocess.run(['sh', str(self.root / 'install.sh'), '--bin-dir', str(installed)], env=env, capture_output=True, text=True)
+        result = subprocess.run(['sh', str(self.root / 'install.sh'), '--bin-dir', str(installed), '--non-interactive'], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((installed / 'jubart').resolve(), self.root / 'jubart')
         calls = log.read_text()
         self.assertIn('node scripts/initialize-local.mjs', calls)
         self.assertIn('compose up -d --build --no-deps panel', calls)
+        self.assertIn('buildx version', calls)
+        self.assertIn('test -s /etc/ssl/certs/ca-certificates.crt', calls)
         result = subprocess.run([str(installed / 'jubart'), 'version'], cwd='/tmp', env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Jubart 1.0.0', result.stdout)

@@ -35,5 +35,5 @@ export function extraAppRoutes(config){
   routers[key+'-http']={rule:`Host(\`${app.domain}\`)`,entryPoints:['web'],service:key,middlewares:['app-security-'+app.id,...(config.proxy.tls?['force-https']:[])]};
   if(config.proxy.tls)routers[key+'-https']={rule:`Host(\`${app.domain}\`)`,entryPoints:['websecure'],service:key,middlewares:['app-security-'+app.id],tls:{certResolver:'letsencrypt'}};
  }
- return JSON.stringify({http:{routers:withBrowserErrors(routers),services}},null,2)+'\n';
+ return JSON.stringify(Object.keys(routers).length?{http:{routers:withBrowserErrors(routers),services}}:{},null,2)+'\n';
 }

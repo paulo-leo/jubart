@@ -10,6 +10,8 @@ COPY frontend ./frontend
 COPY public ./public
 RUN npm run build
 FROM node:${NODE_VERSION}
+# Buildx autentica no registro a partir do painel, usando os certificados locais.
+COPY --from=dockercli /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
