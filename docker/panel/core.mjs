@@ -1,3 +1,4 @@
+import {websocketFromEnv,validateWebsockets} from './websocket-config.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -30,14 +31,16 @@ export function databaseEngineForService(service) {
 export function databasePortsFromEnv(env) {
   return Object.fromEntries([['mariadb','MARIADB',3306],['postgres','POSTGRES',5432]].map(([id,prefix,port])=>[id,{bindAddress:env[`${prefix}_BIND_ADDRESS`]||'127.0.0.1',port:Number(env[`${prefix}_PORT`]||port)}]));
 }
+export function phpmyadminAccessFromEnv(env){return {bindAddress:env.PHPMYADMIN_BIND_ADDRESS||'127.0.0.1',port:Number(env.PHPMYADMIN_PORT||8081)};}
 export function panelAccessFromEnv(env){return {bindAddress:env.PANEL_BIND_ADDRESS||'127.0.0.1',port:Number(env.PANEL_PORT||9090),domain:env.PANEL_DOMAIN||'',proxyEnabled:env.PANEL_PROXY_ENABLED==='true',tls:env.PANEL_TLS_ENABLED==='true',secureCookie:env.PANEL_COOKIE_SECURE==='true'};}
 export function fromEnv(env) {
-  return { version: 1, proxy: { panel: panelAccessFromEnv(env), bindAddress: env.HTTP_BIND_ADDRESS || '127.0.0.1', httpPort: Number(env.HTTP_PORT || 8080), httpsPort: Number(env.HTTPS_PORT || 8443), tls: env.TRAEFIK_TLS_ENABLED === 'true', email: env.ACME_EMAIL || '', databases: databasePortsFromEnv(env) }, applications: Object.entries(slots).filter(([id,slot])=>['main','app2','app3'].includes(id)||env[`${slot.prefix}_DIRECTORY`]).map(([id, slot]) => ({
+  return { version: 1, proxy: { phpmyadmin:phpmyadminAccessFromEnv(env), panel: panelAccessFromEnv(env), bindAddress: env.HTTP_BIND_ADDRESS || '127.0.0.1', httpPort: Number(env.HTTP_PORT || 8080), httpsPort: Number(env.HTTPS_PORT || 8443), tls: env.TRAEFIK_TLS_ENABLED === 'true', email: env.ACME_EMAIL || '', databases: databasePortsFromEnv(env) }, applications: Object.entries(slots).filter(([id,slot])=>['main','app2','app3'].includes(id)||env[`${slot.prefix}_DIRECTORY`]).map(([id, slot]) => ({
     id, type: env[`${slot.prefix}_TYPE`] || 'php', startCommand: env[`${slot.prefix}_START_COMMAND`] || 'npm start', workingDirectory: env[`${slot.prefix}_WORKING_DIRECTORY`] || '/var/www/html', buildDirectory: env[`${slot.prefix}_BUILD_DIRECTORY`] || 'dist', spa: env[`${slot.prefix}_SPA`] === 'true', name: id === 'main' ? 'Aplicação principal' : `Aplicação ${id.slice(3)}`, enabled: id === 'main' || (env.COMPOSE_PROFILES || '').split(',').includes(id),
     directory: env[`${slot.prefix}_DIRECTORY`] || `./${id}`, domain: env[`${slot.prefix}_DOMAIN`] || `${id}.localhost`,
     documentRoot: env[id === 'main' ? 'PHP_DOCUMENT_ROOT' : `${slot.prefix}_DOCUMENT_ROOT`] || '/var/www/html/public',
     mode: env[id === 'main' ? 'PHP_SERVER_MODE' : `${slot.prefix}_SERVER_MODE`] || 'traditional',
     port: Number(env[id === 'main' ? 'PHP_HTTP_PORT' : `${slot.prefix}_HTTP_PORT`] || 8000),
+    websocket:websocketFromEnv(env,slot.prefix,{type:env[`${slot.prefix}_TYPE`]||'php',domain:env[`${slot.prefix}_DOMAIN`]||`${id}.localhost`},{tls:env.TRAEFIK_TLS_ENABLED==='true'}),
   })) };
 }
 const assert = (test, message) => { if (!test) throw new Error(message); };
@@ -65,6 +68,7 @@ export function validateConfig(config) {
       assert(!used.has(value.port), `Porta ${value.port} repetida entre serviços publicados.`);used.set(value.port,id);
     }
   }
+  if(proxy.phpmyadmin){const p=proxy.phpmyadmin;assert(['127.0.0.1','0.0.0.0'].includes(p.bindAddress)&&Number.isInteger(p.port)&&p.port>0&&p.port<=65535,'Acesso phpMyAdmin inválido.');assert(![proxy.httpPort,proxy.httpsPort,proxy.panel?.port,...Object.values(proxy.databases||{}).map(v=>v.port)].includes(p.port),'Porta phpMyAdmin conflita com outro serviço.');}
   assert(typeof proxy.tls === 'boolean', 'TLS inválido.');
   assert(typeof proxy.email === 'string' && !/[\r\n'"\\]/.test(proxy.email) && proxy.email.length < 200, 'Email inválido.');
   if (proxy.tls) assert(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(proxy.email), 'Informe um email para certificados.');
@@ -87,6 +91,7 @@ export function validateConfig(config) {
     assert(['traditional', 'octane'].includes(app.mode), 'Modo de servidor inválido.');
     assert(Number.isInteger(app.port) && app.port >= 1024 && app.port <= 65535 && app.port !== 2019, 'Porta PHP inválida; use 1024–65535, exceto 2019.');
   }
+  validateWebsockets(config);
   return config;
 }
 export function patchEnv(text, config) {
@@ -101,8 +106,10 @@ export function patchEnv(text, config) {
     values[`${prefix}_BIND_ADDRESS`]=proxy.databases[id].bindAddress;
     values[`${prefix}_PORT`]=proxy.databases[id].port;
   }
+  if(proxy.phpmyadmin){values.PHPMYADMIN_BIND_ADDRESS=proxy.phpmyadmin.bindAddress;values.PHPMYADMIN_PORT=proxy.phpmyadmin.port;}
   for (const app of config.applications) {
     const prefix = slots[app.id].prefix;
+    const w=app.websocket;for(const [key,value] of Object.entries({ENABLED:w.enabled,PROVIDER:w.provider,ROUTING:w.routing,DOMAIN:w.domain,PORT:w.port,TLS:w.tls,NODE_COMMAND:w.nodeCommand,NODE_PATH:w.nodePath,ORIGINS:w.origins.join(',')}))values[prefix+'_WEBSOCKET_'+key]=String(value);
     if (app.id !== 'main' && app.enabled) profiles.add(app.id);
     const publicPort = proxy.tls ? proxy.httpsPort : proxy.httpPort;
     values[`${prefix}_URL`] = `${proxy.tls ? 'https' : 'http'}://${app.domain}${publicPort === (proxy.tls ? 443 : 80) ? '' : ':' + publicPort}`;
@@ -113,6 +120,7 @@ export function patchEnv(text, config) {
     values[app.id === 'main' ? 'PHP_SERVER_MODE' : `${prefix}_SERVER_MODE`] = app.mode;
     values[app.id === 'main' ? 'PHP_HTTP_PORT' : `${prefix}_HTTP_PORT`] = app.port;
   }
+  if(config.applications.some(a=>a.enabled&&a.websocket.enabled))profiles.add('websocket');else profiles.delete('websocket');
   values.COMPOSE_PROFILES = [...profiles].join(',');
   const remaining = new Set(Object.keys(values));
   const result = text.split('\n').map(line => {

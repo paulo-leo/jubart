@@ -9,3 +9,35 @@
 /docker/panel/node_modules/
 
 __pycache__/
+
+/.env.phpmyadmin-staged
+.env.server-staged
+config/apps.server-staged.yaml
+
+# Estado específico de cada instalação (distribuir apenas modelos e código).
+/.env.*
+!/.env.example
+/config/apps.json
+/config/apps.compose.yaml
+/config/apps.staged.yaml
+/config/automation.json
+/config/automation.compose.json
+/config/external-tools.json
+/config/runtime-images.lock.json
+/docker/traefik/extra-apps.json
+/docker/traefik/extra-apps.yml
+/docker/traefik/security.json
+/docker/traefik/security.yml
+/docker/traefik/websocket-*.json
+/docker/traefik/websocket-*.yml
+/app2/
+/app3/
+
+/projects/
+
+**/.jubart-cli-*
+
+/docker/traefik/mercure-*.yml
+
+# Backup privado de reescrita do histórico; nunca publicar.
+/.git-publication-backup/

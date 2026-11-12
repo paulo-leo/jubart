@@ -12,10 +12,11 @@ RUN npm run build
 FROM node:${NODE_VERSION}
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 WORKDIR /opt/panel
 COPY --from=panel-build /opt/runtime/node_modules ./node_modules
 COPY . .
-COPY --from=panel-build /opt/panel/public/react-app.js /opt/panel/public/react-app.js.LEGAL.txt /opt/panel/public/react-app.css ./public/
+COPY --from=panel-build /opt/panel/public/react-app.js /opt/panel/public/react-app.js.LEGAL.txt /opt/panel/public/react-app.css /opt/panel/public/react-app.css.LEGAL.txt ./public/
 ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["node", "/opt/panel/server.mjs"]

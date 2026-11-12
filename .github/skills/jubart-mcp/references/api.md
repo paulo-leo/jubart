@@ -70,7 +70,7 @@ Resposta de filas, quando suportada pela aplicação:
 
 O cadastro de uma classe Job **não equivale a uma execução**. Dispatch concluído significa enfileiramento, não sucesso do processamento. A aplicação precisa fornecer sua própria telemetria para histórico completo de sucesso/início/fim de cada job. As contagens/falhas dependem das conexões e tabelas configuradas no Laravel. O endpoint não inventa status quando a aplicação não os disponibiliza.
 
-Logs são dados potencialmente sensíveis e não confiáveis. Há ocultação de segredos conhecidos da infraestrutura e padrões de tokens, mas não garantia de remover todo dado sensível. A chave read autoriza acesso aos logs do projeto inteiro; distribua-a somente a integrações confiáveis. Não são retornados `.env`, cofre, senhas, definições completas de ambiente ou montagens.
+Logs são dados potencialmente sensíveis e não confiáveis. Há ocultação de segredos conhecidos da infraestrutura e padrões de tokens, mas não garantia de remover todo dado sensível. A chave read autoriza logs dentro do escopo de aplicações selecionado (chaves antigas ou * abrangem o projeto inteiro); distribua-a somente a integrações confiáveis. Não são retornados `.env`, cofre, senhas, definições completas de ambiente ou montagens.
 
 ## Endpoint de execução
 
@@ -145,9 +145,9 @@ Exemplo `.vscode/mcp.json` para clientes VS Code que suportam inputs:
 
 ```json
 {
-  "inputs": [{"type":"promptString","id":"infra-api-key","description":"Chave Infra Control","password":true}],
+  "inputs": [{"type":"promptString","id":"infra-api-key","description":"Chave Jubart","password":true}],
   "servers": {
-    "infra-control": {
+    "jubart": {
       "type":"http",
       "url":"https://painel.exemplo.com/mcp",
       "headers":{"Authorization":"Bearer ${input:infra-api-key}"}
@@ -172,9 +172,9 @@ Ferramentas não autorizadas não são anunciadas; os escopos e as ações tamb�
 
 Criação/revogação de chaves, autenticação recusada, consultas, requisições MCP e solicitações/aceite/término/erro de execução são registrados em `.panel-state/mcp/audit.jsonl`. A interface mostra os 200 eventos recentes. Não são gravados tokens, senhas, conteúdo de logs ou argumentos de jobs. O arquivo gira a cada 10 MiB, mantendo até cinco arquivos anteriores. Exporte/arquive por outro meio se precisar de retenção maior. Não é um log externo à prova de adulteração por administradores do host.
 
-A API não aceita terminal, comandos de shell, SQL, caminhos arbitrários, edição de arquivos, alteração de imagens, gestão de chaves ou operações de outros projetos Docker. Ela opera apenas o cadastro de automações da infraestrutura e a ponte Artisan com verbos fixos. Classes de jobs podem executar o código que já existe na aplicação: conceder job.register/job.dispatch é uma permissão de execução da lógica da aplicação, não um sandbox do código PHP.
+A API não aceita terminal, comandos de shell, SQL, caminhos arbitrários, edição de arquivos, alteração de imagens, gestão de chaves ou operações de outros projetos Docker. Ela opera automações, containers cadastrados de aplicações e WebSockets com verbos fixos e escopo por aplicação. Classes de jobs podem executar o código que já existe na aplicação: conceder job.register/job.dispatch é uma permissão de execução da lógica da aplicação, não um sandbox do código PHP.
 
-A Skill em `.github/skills/infra-control-mcp/SKILL.md` orienta o diagnóstico e o uso autorizado. A Skill não concede permissões e não substitui os controles do servidor.
+A Skill em `.github/skills/jubart-mcp/SKILL.md` orienta o diagnóstico e o uso autorizado. A Skill não concede permissões e não substitui os controles do servidor.
 
 ## Aplicação da atualização
 
@@ -184,7 +184,7 @@ sudo docker compose up -d --build --no-deps panel
 
 O build instala as dependências MCP fixadas. Não são criadas chaves padrão. Após atualizar, abra Conexão MCP, emita uma chave de leitura para diagnóstico e, somente quando necessário, outra com as ações de execução apropriadas. A mesma chave pode acumular as duas permissões.
 
-A Skill está no diretório de descoberta `.github/skills/infra-control-mcp` deste workspace. Para outro projeto, copie essa pasta para `.github/skills/` do projeto destino ou para a localização de skills suportada pelo cliente. Consulte as [instruções de Agent Skills do VS Code](https://code.visualstudio.com/docs/agent-customization/agent-skills).
+A Skill está no diretório de descoberta `.github/skills/jubart-mcp` deste workspace. Para outro projeto, copie essa pasta para `.github/skills/` do projeto destino ou para a localização de skills suportada pelo cliente. Consulte as [instruções de Agent Skills do VS Code](https://code.visualstudio.com/docs/agent-customization/agent-skills).
 
 
 ## Endpoints administrativos do painel
@@ -199,3 +199,56 @@ Estes endpoints exigem **cookie de sessão administrativa** e, nas alterações,
 | /api/mcp/audit | GET | Últimos 200 eventos |
 
 Exemplo de corpo de criação: `{"name":"VS Code diagnóstico","scopes":["read"],"actions":[],"expiresInDays":90}`. Não use essas rotas como alternativa aos escopos da integração.
+
+## Contexto ampliado e escopo por aplicação
+
+Chaves novas aceitam `applications: ["main", "app2"]` ou `["*"]` (inclui futuras). O painel exige seleção explícita. Para compatibilidade, chaves antigas sem esse campo mantêm o acesso anterior; revogue e recrie para restringir. Leituras de containers, logs e automações respeitam a seleção; tecnologias são informações compartilhadas. Operações de job/worker verificam a aplicação do cadastro, e job.dispatch exige worker da mesma aplicação. Nenhuma permissão nova é concedida automaticamente a chaves antigas.
+
+`infra_read` com `resource: "context"` retorna:
+
+```json
+{
+  "observedAt": "2026-11-11T12:00:00.000Z",
+  "capabilities": {"scopes":["read","execute"],"actions":["application.restart"],"applications":["main"],"noArbitraryCommands":true},
+  "applications": [{"id":"main","service":"php","revision":"revisao-do-cadastro"}],
+  "services": [{"name":"php","state":"running","health":"healthy"}],
+  "automation": {"workers":[],"jobs":[],"schedulers":[]},
+  "websockets": [],
+  "websocketRevision": "revisao-do-websocket",
+  "recentExecutions": []
+}
+```
+
+Resposta ilustrativa abreviada. A revisão real deve ser obtida na consulta. Context não retorna .env, credenciais, diretórios do host ou comandos cadastrados de inicialização. `resource: "guide"` retorna `{skill, reference}` em Markdown. As visões `applications`, `health`, `websockets`, `executions` oferecem contexto operacional; as quatro têm o mesmo envelope, e WebSocket detalhado/revisão são consultados em context ou websockets. Execuções recentes são apenas recibos desta chave, até 30; não são histórico universal de sucesso de jobs. `app-automation` continua necessário para estatísticas/falhas reais do Laravel.
+
+Use `infra_execute` (alias compatível `automation_execute`) ou `PUT /api/ai/execute`:
+
+```json
+{"requestId":"5f90fb31-1cda-4b77-9de7-ea1ad9c676d8","operation":{"action":"application.restart","app":"main","revision":"revisao-do-cadastro"}}
+```
+
+| Ações | Campos obrigatórios da operação | Efeito |
+|---|---|---|
+| application.start, application.stop, application.restart | action, app, revision | Inicia container existente, para ou reinicia somente o container HTTP da aplicação. Sem build, criação ou aplicação de configuração. |
+| websocket.start, websocket.stop, websocket.restart | action, app | Controla somente o servidor WebSocket cadastrado; início/reinício exigem configuração aplicada. |
+| websocket.configure | action, app, revision, enabled, port, origins | Revision é websocketRevision. Enabled é booleano; porta inteira 1024–65535; origins é lista de 1–20 hosts, sem protocolo/porta/curinga. Preserva provedor, comando, imagem, domínio e TLS. Aplica só o container WebSocket. |
+
+Todas exigem escopo execute, ação exata na chave e aplicação autorizada. Os campos desconhecidos são rejeitados. Para consultar context, logs e guia, exige-se read. Para acompanhar uma operação própria, read ou execute. UUID requestId idempotente por chave e intenção; mesmo UUID com payload diferente retorna 409. Reinício/parada interrompe conexões e não desfaz efeitos de tarefas. Não há acesso ao terminal, SQL, .env, firewall, volumes, bancos, configuração global, troca de imagem ou criação arbitrária de comandos. A API executa somente ações fixas sobre IDs cadastrados; código do projeto previamente configurado continua sendo executado pelos containers.
+
+### Instalação da Skill
+
+No painel, use **Abrir Skill**, **Baixar SKILL.md** e **Baixar referência da Skill**. Salve os dois arquivos como `.github/skills/jubart-mcp/SKILL.md` e `.github/skills/jubart-mcp/references/api.md` no workspace do agente. Esses links usam sessão administrativa do navegador; o agente usa a chave e `infra_read(resource=guide)`. Configure também `.vscode/mcp.json` conforme o exemplo do painel, sem versionar a chave. O reconhecimento de skills depende do cliente; mesmo sem suporte a Skills, o agente pode consultar guide via MCP.
+
+### Prévia de execução
+
+Antes de executar, use `infra_plan` com `{ "operation": { ... } }`, ou `POST /api/ai/plan` com esse mesmo corpo e Bearer. Exige execute, ação específica e aplicação autorizada. Retorna comandos previstos e impactos, sem executar nem reservar a operação. Depois envie `infra_execute` com requestId UUID e a mesma operação. A execução revalida permissões e revisões.
+
+## Panorama e modelo de ambiente
+
+Consulte `infra_read` com `{"resource":"configuration"}` ou `GET /api/ai/read?resource=configuration`, usando Bearer e escopo `read`. O filtro opcional `app` respeita as aplicações da chave.
+
+A resposta inclui `revision`, `scope`, `current.values` (seleção permitida de variáveis não secretas), `current.applications`, `template.content` (modelo público `.env.example` com segredos substituídos por `__GENERATE_LOCALLY__`) e instruções de entrega. `template.available=false` informa modelo ausente. `template.currentValuesApplied=false`: o modelo não incorpora a configuração atual; o agente deve planejar as alterações com essa distinção.
+
+Somente chaves com todas as aplicações (`*`, ou escopo legado equivalente) recebem a seleção de valores globais atuais. Chaves limitadas recebem somente variáveis permitidas das próprias aplicações. O modelo público permanece disponível para planejamento de uma nova instalação, sem segredos de produção.
+
+Não existe ação `env.write`/`env.apply`. Para criar um arquivo, o agente precisa de uma ferramenta de arquivos no cliente e autorização para o destino. Em instalação existente, preservar o `.env` e propor patch/`.env.proposed`; a visão parcial não permite recuperar segredos nem gerar backup completo. Criar um arquivo não aplica configuração nem reinicia containers.

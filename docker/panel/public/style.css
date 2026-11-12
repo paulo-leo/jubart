@@ -1,4 +1,4 @@
-/* Layout do Infra Control. Componentes, cores e estados vêm do Bootstrap 6. */
+/* Layout do Jubart. Componentes, cores e estados vêm do Bootstrap 6. */
 :root{--bs-body-font-size:.8125rem;--bs-body-line-height:1.5;--bg:var(--bs-bg-body);--panel:var(--bs-bg-body);--border:var(--bs-border-color);--text:var(--bs-fg-body);--muted:var(--bs-fg-3);--blue:var(--bs-primary-fg);--green:var(--bs-success-fg);--subtle:var(--bs-bg-1);--hover:var(--bs-bg-2)}
 @layer custom{
 [hidden]{display:none!important}body{margin:0}button{cursor:pointer;touch-action:manipulation}button:disabled{cursor:not-allowed}h1{font-size:1.55rem;letter-spacing:-.5px;margin:0 0 .35rem}h2{font-size:1rem;margin:0}h3{font-size:.95rem;margin:0}p{margin:0}.muted,.small-text,.field-hint,.footnote,.editor-description{color:var(--muted)}.small-text,.small-mono{font-size:.72rem}.small-mono{font-family:var(--bs-font-monospace)}.eyebrow{font-size:.6rem;letter-spacing:1.4px;font-weight:600;color:var(--blue);margin-bottom:8px}.accent,.app-link,.queue-count{color:var(--blue)}.ui-icon{display:inline-block;flex-shrink:0;vertical-align:middle}

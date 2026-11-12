@@ -5,6 +5,7 @@ Inventário dos principais componentes escolhidos para a infraestrutura. As refe
 | Componente | Licença principal / fonte oficial |
 | --- | --- |
 | PHP 8.4 | [PHP License 3.01](https://www.php.net/license/3_01.txt); componentes internos possuem avisos próprios |
+| Mercure (módulo do hub integrado à imagem FrankenPHP) | [AGPL-3.0](https://github.com/dunglas/mercure/blob/main/LICENSE); a versão efetiva acompanha o digest da imagem FrankenPHP |
 | FrankenPHP | [MIT](https://github.com/php/frankenphp/blob/main/LICENSE) |
 | Caddy | [Apache-2.0](https://github.com/caddyserver/caddy/blob/master/LICENSE) |
 | Traefik Proxy comunitário | [MIT](https://github.com/traefik/traefik/blob/master/LICENSE.md) |
@@ -28,7 +29,7 @@ As imagens Debian/Alpine, os pacotes APT, extensões PHP e bibliotecas transitiv
 
 ## Inventário npm
 
-[config/dependencies.licenses.json](config/dependencies.licenses.json) registra as versões e as licenças declaradas de todas as 225 entradas de pacotes do lock atual, incluindo transitivas, build e variantes de plataforma. Foram encontrados MIT, ISC, BSD-2-Clause e BSD-3-Clause. O teste de política compara esse inventário ao lock e rejeita licenças ausentes ou não revisadas.
+[config/dependencies.licenses.json](config/dependencies.licenses.json) registra as versões e as licenças declaradas das entradas de pacotes do lock atual, incluindo transitivas, build e variantes de plataforma. As licenças declaradas incluem MIT, ISC, BSD-2-Clause, BSD-3-Clause e Apache-2.0. O teste de política compara esse inventário ao lock e rejeita licenças ausentes ou não revisadas.
 
 Esse relatório é baseado em metadados npm, não em uma auditoria integral dos arquivos binários. Não constitui SBOM completo das imagens nem comprova todas as licenças dos pacotes APT ou módulos compilados. Novas dependências e atualizações devem ser revisadas antes de incorporadas.
 
@@ -40,3 +41,5 @@ Esse relatório é baseado em metadados npm, não em uma auditoria integral dos 
 - Produtos Enterprise, SaaS e plugins proprietários não são instalados por padrão. S3, SMTP e ferramentas de IA externas são integrações opcionais: os provedores não se tornam open source por serem acessados por esta infraestrutura.
 
 A política se aplica aos componentes mantidos neste repositório. Aplicações, plugins e pacotes enviados pelo administrador exigem revisão própria. Este inventário não atribui uma licença nova ao código autoral do projeto nem altera as licenças das aplicações hospedadas.
+
+O editor de arquivos usa CodeMirror 6 e seus componentes de linguagem, busca e realce, distribuídos sob licença MIT. Versões e dependências estão no lock e em `config/dependencies.licenses.json`; os avisos empacotados acompanham o bundle do painel.

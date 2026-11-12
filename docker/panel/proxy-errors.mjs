@@ -1,0 +1,2 @@
+export const browserRule='(Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)';
+export function withBrowserErrors(routers){const result={};for(const [name,router]of Object.entries(routers)){if(name.endsWith('-browser'))continue;result[name]={...router,priority:10};result[name+'-browser']={...router,rule:`(${router.rule}) && ${browserRule}`,priority:50,middlewares:['jubart-errors',...(router.middlewares||[])]};}return result;}

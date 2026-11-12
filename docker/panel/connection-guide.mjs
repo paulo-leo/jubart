@@ -1,0 +1,5 @@
+import {parseEnv,databasePortsFromEnv,panelAccessFromEnv,phpmyadminAccessFromEnv,databaseEnabled} from './core.mjs';
+export function connectionInfo(text,services=[]){
+ const env=parseEnv(text),panel=panelAccessFromEnv(env),db=databasePortsFromEnv(env);
+ return {services:[['panel','Painel administrativo',panel,3000,'HTTP',true],['mariadb','MariaDB',db.mariadb,3306,'TCP',databaseEnabled(env,'mariadb')],['postgres','PostgreSQL',db.postgres,5432,'TCP',databaseEnabled(env,'postgres')],['phpmyadmin','phpMyAdmin',phpmyadminAccessFromEnv(env),80,'HTTP',databaseEnabled(env,'mariadb')]].map(([id,name,access,internalPort,protocol,enabled])=>({id,name,...access,internalPort,protocol,enabled,published:services.find(s=>s.name===id)?.ports||[],state:services.find(s=>s.name===id)?.state||'not_created'})),panel:{domain:panel.domain,proxyEnabled:panel.proxyEnabled,tls:panel.tls,secureCookie:panel.secureCookie},proxy:{httpPort:Number(env.HTTP_PORT||8080),httpsPort:Number(env.HTTPS_PORT||8443)},note:'Os comandos SSH devem ser executados no seu computador. O IP/hostname e as credenciais SSH são do servidor hospedeiro; não são obtidos automaticamente pelo painel.'};
+}

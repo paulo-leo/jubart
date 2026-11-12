@@ -2,13 +2,30 @@ http:
   routers:
 {{ if has "app2" (splitList "," (env "ACTIVE_PROFILES")) }}
     app2-http:
+      priority: 10
+      middlewares: [app-security-app2{{ if eq (env "APP_TLS_ENABLED") "true" }}, force-https{{ end }}]
       rule: 'Host(`{{ env "APP_2_DOMAIN" }}`)'
       entryPoints: [web]
       service: app2
+    app2-http-browser:
+      priority: 50
+      middlewares: [jubart-errors, app-security-app2{{ if eq (env "APP_TLS_ENABLED") "true" }}, force-https{{ end }}]
+      rule: '(Host(`{{ env "APP_2_DOMAIN" }}`)) && (Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)'
+      entryPoints: [web]
+      service: app2
 {{ if eq (env "APP_TLS_ENABLED") "true" }}
-      middlewares: [force-https]
     app2-https:
+      priority: 10
+      middlewares: [app-security-app2]
       rule: 'Host(`{{ env "APP_2_DOMAIN" }}`)'
+      entryPoints: [websecure]
+      service: app2
+      tls:
+        certResolver: letsencrypt
+    app2-https-browser:
+      priority: 50
+      middlewares: [jubart-errors, app-security-app2]
+      rule: '(Host(`{{ env "APP_2_DOMAIN" }}`)) && (Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)'
       entryPoints: [websecure]
       service: app2
       tls:
@@ -17,13 +34,30 @@ http:
 {{ end }}
 {{ if has "app3" (splitList "," (env "ACTIVE_PROFILES")) }}
     app3-http:
+      priority: 10
+      middlewares: [app-security-app3{{ if eq (env "APP_TLS_ENABLED") "true" }}, force-https{{ end }}]
       rule: 'Host(`{{ env "APP_3_DOMAIN" }}`)'
       entryPoints: [web]
       service: app3
+    app3-http-browser:
+      priority: 50
+      middlewares: [jubart-errors, app-security-app3{{ if eq (env "APP_TLS_ENABLED") "true" }}, force-https{{ end }}]
+      rule: '(Host(`{{ env "APP_3_DOMAIN" }}`)) && (Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)'
+      entryPoints: [web]
+      service: app3
 {{ if eq (env "APP_TLS_ENABLED") "true" }}
-      middlewares: [force-https]
     app3-https:
+      priority: 10
+      middlewares: [app-security-app3]
       rule: 'Host(`{{ env "APP_3_DOMAIN" }}`)'
+      entryPoints: [websecure]
+      service: app3
+      tls:
+        certResolver: letsencrypt
+    app3-https-browser:
+      priority: 50
+      middlewares: [jubart-errors, app-security-app3]
+      rule: '(Host(`{{ env "APP_3_DOMAIN" }}`)) && (Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)'
       entryPoints: [websecure]
       service: app3
       tls:

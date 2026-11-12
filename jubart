@@ -1,0 +1,5 @@
+#!/bin/sh
+# Resolve the installed symlink so invocation works from any directory.
+set -eu
+JUBART_COMMAND=$(readlink -f -- "$0")
+exec python3 "$(dirname -- "$JUBART_COMMAND")/scripts/jubart.py" "$@"

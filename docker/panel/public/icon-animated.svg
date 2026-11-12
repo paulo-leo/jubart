@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <style>.brand-water{transform-origin:256px 430px;animation:brand-water 5s ease-in-out infinite}.brand-spray{animation:brand-spray 4s ease-in-out infinite;transform-origin:330px 150px}@keyframes brand-water{0%,100%{transform:translateY(0) scaleX(1)}50%{transform:translateY(-8px) scaleX(.95)}}@keyframes brand-spray{0%,100%{opacity:.65;transform:translateY(0)}50%{opacity:1;transform:translateY(-5px)}}@media(prefers-reduced-motion:reduce){.brand-water,.brand-spray{animation:none}}</style><defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E6BFF"/>
+      <stop offset="1" stop-color="#0A2E8A"/>
+    </linearGradient>
+    <linearGradient id="corpo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCE8FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- fundo -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+
+  <!-- ondas -->
+  <g class="brand-water" stroke="#7FB2FF" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.55">
+    <path d="M86 430 q30 -18 60 0 t60 0 t60 0 t60 0 t60 0 t60 0"/>
+  </g>
+
+  <!-- jato em forma de rede -->
+  <g stroke="#7FB2FF" stroke-width="10" stroke-linecap="round" fill="none">
+    <path d="M330 212 V160"/>
+    <path d="M330 160 L284 122"/>
+    <path d="M330 160 V104"/>
+    <path d="M330 160 L376 122"/>
+  </g>
+  <g class="brand-spray" fill="#22D3EE">
+    <circle cx="284" cy="122" r="15"/>
+    <circle cx="330" cy="102" r="15"/>
+    <circle cx="376" cy="122" r="15"/>
+  </g>
+  <circle cx="330" cy="160" r="11" fill="#7FB2FF"/>
+
+  <!-- baleia -->
+  <path fill="url(#corpo)" d="
+    M 410 300
+    C 410 368 350 398 268 398
+    C 196 398 156 374 132 338
+    C 118 316 108 290 100 262
+    L 72 238
+    C 60 228 66 210 84 214
+    L 108 220
+    L 114 194
+    C 118 176 140 176 142 194
+    L 146 244
+    C 166 226 230 208 300 210
+    C 366 212 410 246 410 300 Z"/>
+
+  <!-- barriga -->
+  <path fill="#B9D0FF" d="
+    M 404 326
+    C 392 372 336 392 268 392
+    C 214 392 178 378 152 354
+    C 214 362 280 356 334 342
+    C 364 334 386 330 404 326 Z"/>
+  <g stroke="#7FB2FF" stroke-width="5" stroke-linecap="round">
+    <path d="M250 368 h40"/>
+    <path d="M300 362 h40"/>
+  </g>
+
+  <!-- olho e sorriso -->
+  <circle cx="356" cy="284" r="13" fill="#0A2E8A"/>
+  <circle cx="361" cy="279" r="4" fill="#FFFFFF"/>
+  <path d="M372 316 q16 6 28 -4" stroke="#0A2E8A" stroke-width="6" stroke-linecap="round" fill="none"/>
+
+  <!-- nadadeira -->
+  <path fill="#B9D0FF" d="M262 326 c-6 26 -30 40 -52 38 c14 -10 24 -24 26 -40 z"/>
+</svg>

@@ -1,0 +1,1 @@
+export function passwordStrength(value){const p=String(value||'');const classes=[/[a-z]/,/[A-Z]/,/[0-9]/,/[^a-zA-Z0-9]/].filter(r=>r.test(p)).length;return p.length>=16&&p.length<=128&&classes>=3&&!/(.)\1{4}/.test(p)&&!/[\s'"\\$#`]/.test(p)&&!/(password|senha|123456|qwerty)/i.test(p);}

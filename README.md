@@ -1,8 +1,16 @@
 <a id="inicio"></a>
 
+<p align="center">
+  <img src="icon.svg" alt="Logo do Jubart" width="112" height="112">
+</p>
+
+> **Primeira instalação na VPS?** Veja [como entrar no painel por túnel SSH, HTTP ou HTTPS](#primeiro-acesso-vps).
+
 > **Política de dependências:** utilizar componentes de infraestrutura open source e imagens externas fixadas por tag + digest SHA-256. Consulte [Imagens fixadas](#imagens-fixadas-e-licencas) e [licenças de terceiros](THIRD_PARTY_NOTICES.md).
 
-# 🖥️ Infra Control — painel de infraestrutura para aplicações web
+# Jubart — painel de infraestrutura para aplicações web
+
+Publicação futura de imagens: consulte o [guia e as pendências para o Docker Hub](DOCKER_HUB.md).
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![PHP](https://img.shields.io/badge/Runtime-PHP-777BB4?logo=php&logoColor=white)
@@ -14,9 +22,9 @@
 
 **Uma infraestrutura compartilhada para publicar e administrar aplicações PHP, Node.js e estáticas, do ambiente local à VPS.**
 
-O **Infra Control** reúne Docker Compose, proxy por domínio/subdomínio, bancos, cache, backups e um painel administrativo em React. Cada aplicação escolhe seu runtime: PHP com FrankenPHP, um processo Node.js ou arquivos estáticos servidos pelo Caddy. Laravel, WordPress e builds React/Vite são exemplos de projetos atendidos.
+O **Jubart** reúne Docker Compose, proxy por domínio/subdomínio, bancos, cache, backups e um painel administrativo em React. Cada aplicação escolhe seu runtime: PHP com FrankenPHP, um processo Node.js ou arquivos estáticos servidos pelo Caddy. Laravel, WordPress e builds React/Vite são exemplos de projetos atendidos.
 
-O painel permite cadastrar aplicações, configurar acessos, gerenciar bancos e usuários, agendar backups, importar/exportar SQL e acompanhar o host e os containers. A **Conexão MCP** disponibiliza diagnóstico e operações de filas/jobs autorizadas para ferramentas de IA. Diretórios, versões e credenciais ficam no `.env` da infraestrutura; os cadastros e apontamentos do painel ficam em arquivos JSON. As particularidades de cada aplicação continuam no próprio projeto.
+O painel permite cadastrar aplicações, configurar acessos, gerenciar bancos e usuários, agendar backups, importar/exportar SQL e acompanhar o host e os containers. A **Conexão MCP** disponibiliza diagnóstico e operações autorizadas de aplicações, WebSockets e filas/jobs para ferramentas de IA. Diretórios, versões e credenciais ficam no `.env` da infraestrutura; os cadastros e apontamentos do painel ficam em arquivos JSON. As particularidades de cada aplicação continuam no próprio projeto.
 
 **Autor:** Paulo Leonardo da S. Cassimiro · Engenheiro de Software e Analista de Sistemas, com atuação em desenvolvimento.
 
@@ -26,7 +34,58 @@ O painel permite cadastrar aplicações, configurar acessos, gerenciar bancos e 
 > [!WARNING]
 > 🛑 **Proteja seus dados:** `docker compose down -v` apaga os volumes nomeados. Para manutenção, use os comandos de [recriação sem apagar volumes](#manutencao). Não versione senhas nem backups.
 
-[🚀 Início rápido](#inicio-rapido) · [🧭 .env local/VPS e HTTPS](#guia-env) · [📦 Tipos de aplicação](#tipos-aplicacao) · [➕ Cadastrar aplicações](#cadastrar-aplicacoes) · [🖥️ Painel](#painel-administrativo) · [🧮 Console SQL](#console-sql) · [🤖 Integração MCP](docs/MCP.md) · [👨‍💻 Visão de arquitetura](#visao-arquitetura)
+[🚀 Instalação e configuração rápida](#instalacao-rapida) · [🧭 .env local/VPS e HTTPS](#guia-env) · [📦 Tipos de aplicação](#tipos-aplicacao) · [➕ Cadastrar aplicações](#cadastrar-aplicacoes) · [🖥️ Painel](#painel-administrativo) · [🧮 Console SQL](#console-sql) · [🤖 Integração MCP](docs/MCP.md) · [👨‍💻 Visão de arquitetura](#visao-arquitetura)
+
+<details>
+<summary><strong>Índice completo por seção</strong></summary>
+
+- [👨‍💻 Autoria e visão de arquitetura](#sec-autoria-e-visao-de-arquitetura)
+- [🚀 Instalação e configuração rápida](#sec-instalacao-e-configuracao-rapida)
+- [Terminal Jubart](#sec-terminal-jubart)
+- [Topologia da sua instalação](#sec-topologia-da-sua-instalacao)
+- [Arquitetura interativa](#sec-arquitetura-interativa)
+- [🎛️ PHP: escolher o modo do servidor](#sec-php-escolher-o-modo-do-servidor)
+- [🐙 Preparar aplicação e instalar Octane (somente modo octane)](#sec-preparar-aplicacao-e-instalar-octane-somente-modo-octane)
+- [🌍 Configuração local e VPS](#sec-configuracao-local-e-vps)
+- [⚡ Workers Octane e deploy](#sec-workers-octane-e-deploy)
+- [🐘 Arquivos PHP e módulos](#sec-arquivos-php-e-modulos)
+- [📦 npm](#sec-npm)
+- [🚀 Comandos rápidos: subir, parar e reconstruir](#sec-comandos-rapidos-subir-parar-e-reconstruir)
+- [📂 Trocar o diretório da aplicação (APP_DIRECTORY)](#sec-trocar-o-diretorio-da-aplicacao-app-directory)
+- [🔧 Manutenção: aplicar configurações sem apagar volumes](#sec-manutencao-aplicar-configuracoes-sem-apagar-volumes)
+- [💻 Terminal: entrar nos containers e executar comandos](#sec-terminal-entrar-nos-containers-e-executar-comandos)
+- [🧭 Administração diária](#sec-administracao-diaria)
+- [🔐 Certificados: validade e renovação](#sec-certificados-validade-e-renovacao)
+- [🗄️ Backup do MariaDB](#sec-backup-do-mariadb)
+- [🛡️ Backup dos certificados e arquivos da aplicação](#sec-backup-dos-certificados-e-arquivos-da-aplicacao)
+- [🧩 Adicionar novos serviços](#sec-adicionar-novos-servicos)
+- [⚡ Valkey 8](#sec-valkey-8)
+- [⏱️ Filas, jobs e Laravel Scheduler](#sec-filas-jobs-e-laravel-scheduler)
+- [🎨 Laravel puro, Inertia, Vite/HMR e SSR](#sec-laravel-puro-inertia-vite-hmr-e-ssr)
+- [💾 Backup automático do MariaDB: configuração e operação](#sec-backup-automatico-do-mariadb-configuracao-e-operacao)
+- [🎭 Páginas de erro do servidor](#sec-paginas-de-erro-do-servidor)
+- [🔎 Erro 500 detalhado em desenvolvimento local](#sec-erro-500-detalhado-em-desenvolvimento-local)
+- [🏘️ Várias aplicações com subdomínios](#sec-varias-aplicacoes-com-subdominios)
+- [Jubart: painel administrativo](#sec-jubart-painel-administrativo)
+- [⏱️ Painel: filas, jobs e Laravel Scheduler](#sec-painel-filas-jobs-e-laravel-scheduler)
+- [📜 Logs, detalhes dos containers e console web](#sec-logs-detalhes-dos-containers-e-console-web)
+- [📈 Métricas ao vivo: CPU, memória e requisições](#sec-metricas-ao-vivo-cpu-memoria-e-requisicoes)
+- [🗄️ Bancos de dados: MariaDB e PostgreSQL compartilhados](#sec-bancos-de-dados-mariadb-e-postgresql-compartilhados)
+- [🗄️ Escolher quais bancos iniciar](#sec-escolher-quais-bancos-iniciar)
+- [Primeiro acesso ao painel na VPS: HTTP, HTTPS ou túnel SSH](#sec-primeiro-acesso-ao-painel-na-vps-http-https-ou-tunel-ssh)
+- [WebSocket por aplicação](#sec-websocket-por-aplicacao)
+- [Saúde interna para as aplicações](#sec-saude-interna-para-as-aplicacoes)
+- [Segurança por aplicação](#sec-seguranca-por-aplicacao)
+- [Limites de importação e exportação do phpMyAdmin](#sec-limites-de-importacao-e-exportacao-do-phpmyadmin)
+- [Painéis Jubart vinculados e entrada automática](#sec-paineis-jubart-vinculados-e-entrada-automatica)
+- [Data, hora e região do servidor](#sec-data-hora-e-regiao-do-servidor)
+- [Publicação no GitHub e configurações locais](#sec-publicacao-no-github-e-configuracoes-locais)
+- [Assistente Jubart.json para outra infraestrutura](#sec-assistente-jubart-json-para-outra-infraestrutura)
+- [Plugins Docker por JSON](#sec-plugins-docker-por-json)
+- [Mercure por aplicação PHP](#sec-mercure-por-aplicacao-php)
+- [Recompilar o painel pela administração](#sec-recompilar-o-painel-pela-administracao)
+
+</details>
 
 ### 🗺️ Navegação
 
@@ -76,6 +135,8 @@ Os nomes históricos de alguns serviços (`php`, `php-app2` etc.) foram mantidos
 
 <a id="visao-arquitetura"></a>
 
+<a id="sec-autoria-e-visao-de-arquitetura"></a>
+
 ## 👨‍💻 Autoria e visão de arquitetura
 
 **Paulo Leonardo da S. Cassimiro**  
@@ -118,26 +179,85 @@ A estrutura permite combinar aplicações PHP, processos Node.js e sites estáti
 
 <a id="inicio-rapido"></a>
 
-## 🚀 Início rápido: publicar sua primeira aplicação
+<a id="instalacao-rapida"></a>
 
-1. Prepare o `.env` da infraestrutura a partir de `.env.example`, **somente se ainda não existir**. Configure credenciais, `PANEL_WORKSPACE_DIRECTORY` e `PANEL_PROJECTS_DIRECTORY` com caminhos existentes. Mantenha o nome do projeto Compose de uma instalação existente para continuar usando seus volumes.
-2. Construa e suba apenas o painel, sem depender da aplicação inicial:
+<a id="sec-instalacao-e-configuracao-rapida"></a>
+
+## 🚀 Instalação e configuração rápida
+
+### Instalação automática recomendada
+
+Clone ou baixe este repositório e abra um terminal na pasta que contém `compose.yaml` e `install.sh`. No Linux, com **Docker Engine/Compose v2 e Python 3** disponíveis e Docker acessível pelo seu usuário, execute na raiz do projeto:
+
+```bash
+./install.sh
+```
+
+O instalador prepara `.env`, caminhos e credenciais iniciais, constrói/inicia **somente o painel** e instala automaticamente o comando `jubart` em `/usr/local/bin`. Não exige Node.js no host: a preparação usa a imagem Node fixada no exemplo. Pode solicitar `sudo` apenas para instalar o atalho global. Execute como dono do repositório; não é necessário rodar todo o instalador com `sudo`.
+
+Credenciais personalizadas e configurações existentes são preservadas. O instalador não abre firewall, instala Docker/Python, transfere código nem inicia todas as aplicações/bancos. Conclua esses apontamentos pelo assistente. Na primeira entrada, consulte `PANEL_USERNAME` e `PANEL_PASSWORD` no `.env`; o instalador não imprime os segredos.
+
+### Primeiro acesso e configuração em poucos passos
+
+1. Abra **http://localhost:9090** no computador em que o Jubart foi instalado. Entre com `PANEL_USERNAME` e `PANEL_PASSWORD` do `.env` gerado. O padrão é **HTTP por porta**, com acesso local; não exige domínio ou certificado.
+2. Entre em **Administração → Assistente de configuração → Preparar meu ambiente**. Revise acesso/portas, tipo da aplicação, domínio e pasta do projeto no host. Para Laravel, a raiz pública normalmente é `/var/www/html/public`; outros projetos podem usar outra pasta pública.
+3. Se usar os bancos locais, inicie os serviços desejados antes de testar a conexão:
 
    ```bash
+   docker compose up -d mariadb postgres
+   ```
+
+   Esse comando considera o exemplo com ambos habilitados. Se desativou um deles, informe somente o serviço habilitado. Em **Dados → Conexões**, confira ou cadastre/teste a conta que será usada no console e nas transferências SQL.
+4. Conclua a revisão do assistente e salve/aplique a configuração. Prepare as dependências e o build do seu projeto conforme o [tipo de aplicação](#tipos-aplicacao). Para iniciar os serviços configurados, abra **Administração → Manutenção do painel → Iniciar serviços** e confirme. A tela acompanha a execução, que continua mesmo se o próprio painel for recriado. Como alternativa pelo terminal, use:
+
+   ```bash
+   docker compose config --quiet
+   docker compose up -d --build
+   jubart status
+   jubart site
+   ```
+
+O instalador inicia somente o painel; a aplicação e os bancos passam a funcionar depois da preparação e aplicação dos apontamentos. As pastas `app/` e `projects/` começam vazias. Coloque seu projeto nelas ou informe outro diretório existente no host. Ao mudar `NODE_UID`/`NODE_GID`, use os identificadores do dono dos arquivos do projeto.
+
+| Padrão do exemplo | Valor inicial |
+| --- | --- |
+| Painel | `http://localhost:9090`, publicação em `127.0.0.1` |
+| Aplicação principal | `http://localhost`, entrada HTTP na porta `80` |
+| HTTPS | Desativado; configurar posteriormente com domínio |
+| MariaDB e PostgreSQL | Habilitados no modelo, iniciados quando solicitados |
+| Backups automáticos | Desativados |
+| Mercure e WebSockets | Desativados; ativação por aplicação no painel |
+| Senhas e chave do cofre | Geradas localmente pelo inicializador |
+
+**Vai instalar diretamente na VPS?** Use o [primeiro acesso por SSH ou IP](#primeiro-acesso-vps). `localhost` no navegador aponta para o seu computador, não para a VPS. Para HTTP por IP, publique a porta do painel em `0.0.0.0` e libere essa porta TCP no firewall da VPS e do provedor. O Jubart não abre o firewall automaticamente.
+
+### Preparação manual alternativa
+
+Use este caminho se não quiser executar o instalador. O primeiro bloco exige **Node.js 24 no host**; a alternativa seguinte usa Docker e dispensa Node no host. Copiar apenas `.env.example` não basta: o inicializador prepara caminhos, credenciais e arquivos locais do Compose.
+
+1. Copie o exemplo **somente se ainda não existir um `.env`** e prepare os arquivos locais:
+
+   ```bash
+   test -f .env || cp .env.example .env
+   node scripts/initialize-local.mjs
    docker compose up -d --build --no-deps panel
    ```
 
-3. Acesse `http://localhost:9090` no padrão local, ou a porta/endereço definidos no `.env`. Entre com `PANEL_USERNAME` e `PANEL_PASSWORD`.
-4. Na guia **Aplicações**, configure a aplicação principal ou use **Nova aplicação**. Escolha **PHP**, **Node.js** ou **Estática**, informe domínio e pasta existente e ajuste os campos específicos:
+   O inicializador preenche os caminhos absolutos, cria `app/` e `projects/`, gera senhas únicas no lugar das senhas de exemplo e prepara os arquivos locais do Compose. Valores personalizados e configurações existentes são preservados. Não altere `COMPOSE_PROJECT_NAME` de uma instalação existente: ele identifica seus volumes.
 
-   | Tipo | Exemplo | Preparação |
-   | --- | --- | --- |
-   | PHP | Laravel ou WordPress | Dependências e raiz pública corretas; Octane apenas quando instalado |
-   | Node.js | API ou aplicação com servidor próprio | Dependências/build preparados, comando de início e escuta em `0.0.0.0` na porta interna |
-   | Estática | React/Vite ou HTML | Build pronto com `index.html`; informar `dist`, `build` ou `.` e escolher SPA quando necessário |
+   **Sem Node instalado no host?** Execute o inicializador com Docker antes de subir o painel:
 
-5. Confirme o rascunho, clique em **Salvar configurações** e depois **Aplicar configuração**. O painel gera o serviço e o roteamento adequados ao tipo escolhido.
-6. Depois de preparar os apontamentos, suba os demais serviços compartilhados conforme a configuração:
+   ```bash
+   test -f .env || cp .env.example .env
+   JUBART_NODE_IMAGE="$(sed -n 's/^NODE_VERSION=//p' .env.example)"
+   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/workspace" -w /workspace -e JUBART_HOST_DIRECTORY="$PWD" "node:$JUBART_NODE_IMAGE" node scripts/initialize-local.mjs
+   docker compose up -d --build --no-deps panel
+   ```
+
+2. Abra **http://localhost:9090**. O painel usa **HTTP e porta direta por padrão**, sem domínio, proxy público ou certificado. Consulte `PANEL_USERNAME` e `PANEL_PASSWORD` no `.env` local para entrar; a senha gerada não é impressa no terminal.
+3. Acesse **Administração → Assistente de configuração**. As etapas guiam acesso/portas, aplicação, banco/conexão e revisão. Salve e aplique após conferir os impactos. O assistente também fica disponível para revisões posteriores.
+4. Coloque seu projeto em `app/` ou `projects/` e informe a pasta no assistente. Prepare dependências e build conforme o [tipo de aplicação](#tipos-aplicacao). O Jubart não cria o código, instala dependências nem executa migrações automaticamente.
+5. Para preparar os bancos antes da etapa de conexão, execute `docker compose up -d mariadb postgres`. Cadastre/teste uma conexão com uma conta de aplicação. Crie usuários e permissões em **Dados → Usuários dos bancos**, se necessário. Depois de revisar seus apontamentos, inicie os demais serviços:
 
    ```bash
    docker compose config --quiet
@@ -145,7 +265,99 @@ A estrutura permite combinar aplicações PHP, processos Node.js e sites estáti
    docker compose ps -a
    ```
 
-O painel não cria o código da aplicação, instala suas dependências ou executa migrações automaticamente. Use as [instruções por tipo](#tipos-aplicacao). No Linux, acrescente `sudo` se sua instalação Docker exigir. Na VPS, configure DNS, publicação de portas e HTTPS na área **Proxy & acessos**.
+### Acesso por IP na VPS
+
+`localhost` é a própria máquina do navegador. O exemplo publica o painel em `127.0.0.1:9090`, acessível localmente ou por túnel SSH. Para acessá-lo por **http://IP_DA_VPS:9090**, escolha publicação `0.0.0.0` no assistente (ou ajuste `PANEL_BIND_ADDRESS=0.0.0.0` no `.env`) e mantenha `PANEL_PROXY_ENABLED=false`, `PANEL_TLS_ENABLED=false`, `PANEL_COOKIE_SECURE=false` para HTTP direto. Salve/aplique e recrie o painel no terminal:
+
+```bash
+docker compose up -d --no-deps --force-recreate panel
+```
+
+Libere a porta TCP configurada em `PANEL_PORT` **no firewall da VPS e nas regras do provedor**, preferencialmente apenas para seu IP. Essa liberação é feita pelo administrador; o painel não altera o firewall. HTTP não cifra as credenciais: para acesso pela internet, configure HTTPS em **Proxy & acessos** ou utilize túnel SSH. Aplicações têm publicação independente (`HTTP_BIND_ADDRESS`/`HTTP_PORT`) e precisam do domínio/IP correspondente ao roteamento.
+
+No Linux, acrescente `sudo` se sua instalação Docker exigir. Alterações de porta/cookie do próprio painel só entram em vigor após recriá-lo; use o novo endereço para reconectar.
+
+<a id="cli-jubart"></a>
+
+<a id="sec-terminal-jubart"></a>
+
+## Terminal Jubart
+
+Depois da instalação, de qualquer pasta:
+
+```bash
+jubart
+jubart help
+jubart panel
+jubart panel --host 203.0.113.10 --ssh-user ubuntu --ssh-port 22
+jubart status
+jubart health
+```
+
+| Comando | Resultado |
+| --- | --- |
+| `jubart` | Baleia da marca em arte de terminal, versão, crédito do desenvolvedor, acesso configurado e estado dos containers |
+| `jubart help` | Lista de comandos; use também `jubart COMANDO --help` |
+| `jubart version` / `jubart --version` | Versão do código instalado |
+| `jubart panel` | Modo HTTP/HTTPS, portas e exemplo de túnel SSH para publicação local; consulta também o container |
+| `jubart access` | Consulta como alternar o acesso do painel |
+| `jubart access tunnel` | Publica o painel somente em `127.0.0.1` e mostra o comando SSH |
+| `jubart access http` | Publica o painel em `0.0.0.0` via HTTP por porta |
+| `jubart site` | Testa a rota `/` da aplicação `main` na porta HTTP/HTTPS publicada, usando o domínio correto |
+| `jubart site app2` / `jubart site --all` | Testa uma aplicação pelo identificador ou todas as habilitadas |
+| `jubart status` | Estado, healthcheck e portas publicadas dos containers criados |
+| `jubart health` | Verifica todos os serviços habilitados no Compose; retorna código 1 se ausentes, parados, iniciando ou unhealthy |
+| `jubart apps` | Aplicações cadastradas, tipos, domínios e habilitação |
+| `jubart user` | Login do administrador principal do `.env` |
+| `jubart user NOVO_LOGIN` | Altera esse login e recria somente o painel após confirmação |
+| `jubart password` | Solicita senha atual/nova sem exibi-las, salva e recria o painel após confirmação |
+| `jubart start` | Inicia somente o painel já construído |
+| `jubart restart` | Recria somente o painel, com confirmação, efetivando mudanças de `.env` |
+
+O comando `jubart site` faz uma requisição GET local, com limite de 10 segundos por aplicação, sem imprimir o conteúdo da resposta. Respostas 2xx indicam resposta bem-sucedida; 3xx são informadas como redirecionamento sem seguir o destino; 4xx/5xx, falhas TLS e indisponibilidade retornam código 1. HTTPS preserva a validação do certificado e o domínio TLS. O teste não comprova acesso externo/firewall nem o funcionamento de todas as rotas.
+
+O CLI usa cores e ícones em terminais compatíveis, com seções de acesso, túnel e serviços. A logo e os créditos ficam lado a lado quando há largura disponível. Para desativar cores, use `NO_COLOR=1 jubart`; saídas redirecionadas e terminais `TERM=dumb` não recebem códigos de cor.
+
+O CLI lê a instalação à qual o atalho está vinculado; não depende da pasta atual. Para outra instalação, use `jubart --root /caminho/da/instalacao status`. A versão informada vem do código local; o container pode exigir atualização de imagem. Os endereços refletem a configuração salva, enquanto as portas mostradas no estado vêm do Docker. O CLI não detecta túneis SSH abertos nem adivinha IP público e usuário SSH: informe `--host` e `--ssh-user`, ou substitua os marcadores do comando sugerido. Execute o comando SSH **no seu computador**, depois abra o endereço local e mantenha a conexão aberta.
+
+Para alternar o acesso pelo terminal:
+
+```bash
+jubart access http --port 9090
+jubart access tunnel --host 203.0.113.10 --ssh-user ubuntu --ssh-port 22
+```
+
+As duas opções pedem confirmação, salvam no `.env` e sincronizam `config/apps.json` quando existente, para uma aplicação posterior não restaurar o modo antigo. Recriam **somente o painel**, encerrando a sessão. Ambas desativam o proxy por domínio, HTTPS e cookie seguro do painel; as configurações HTTPS das aplicações permanecem. `--port` é opcional e preserva a porta atual quando omitida. Se a recriação falhar, o modo fica salvo e o CLI orienta executar `jubart restart`.
+
+No modo `http`, libere a porta no firewall apenas para origens autorizadas: HTTP não cifra as credenciais. O CLI não abre portas no firewall. No modo `tunnel`, o acesso direto neste host continua disponível; para acesso remoto, copie o comando SSH mostrado e execute **no seu computador**. O CLI não inicia automaticamente o túnel. Depois de uma alteração pelo CLI, atualize abas abertas do painel antes de editar configurações novamente.
+
+Alterar login/senha principal encerra sessões e pode invalidar compartilhamentos. As demais contas continuam sendo administradas em **Usuários e permissões**. Acesso ao CLI exige permissão sobre os arquivos locais e, nas operações Docker, sobre o daemon. Serviços sem healthcheck não têm sua saúde comprovada somente por estarem em execução.
+
+Para instalar em outro diretório de comandos, use `./install.sh --bin-dir /caminho/absoluto/bin` (esse diretório precisa estar no `PATH`). `--no-start` prepara os arquivos e instala o comando sem construir/iniciar o painel. Um comando de outra instalação no mesmo destino não é sobrescrito. O atalho aponta para este checkout: se mover a pasta, execute novamente o instalador no novo local, escolhendo um destino livre. Para remover o comando global, remova apenas o atalho `/usr/local/bin/jubart`; os arquivos e volumes do projeto permanecem.
+
+<a id="topologia"></a>
+
+<a id="sec-topologia-da-sua-instalacao"></a>
+
+## Topologia da sua instalação
+
+Em **Workspace → Topologia da infraestrutura**, administradores podem consultar aplicações cadastradas, domínios, portas de entrada e internas, pastas no host e seus vínculos declarados. Filtre aplicações, inclua desabilitadas ou use o inventário; clique nos elementos do mapa para abrir detalhes.
+
+A página combina três fontes: cadastros salvos, definição Compose e estado/montagens observados no Docker. O mapa não desenha tráfego real nem executa alterações. Se o Docker estiver indisponível, os cadastros continuam visíveis e a execução fica como não consultada. Uma diferença na montagem da pasta é sinalizada para revisão.
+
+Banco e cache são identificados por destinos explícitos na definição Compose (`DB_HOST`/`DB_DATABASE`, `DATABASE_URL`, `REDIS_HOST`). Senhas, usuários de URLs e parâmetros secretos não são enviados à página. A relação declarada não comprova conexão bem-sucedida: o código/cache interno da aplicação pode escolher outro destino. Conexões do console SQL não são usadas para presumir vínculos entre aplicações e bancos. A topologia é uma área administrativa autenticada.
+
+<a id="arquitetura-interativa"></a>
+
+<a id="sec-arquitetura-interativa"></a>
+
+## Arquitetura interativa
+
+Em **Workspace → Como o Jubart funciona**, explore uma simulação visual da arquitetura, também acessível na aba **Arquitetura** de **Referências**. A baleia acompanha o fluxo entre cliente, proxy, runtime e serviços de apoio. Clique nos componentes para ler suas funções, pause a reprodução ou escolha etapas individuais.
+
+A apresentação fica disponível dentro do painel autenticado. O botão **Tela inteira** amplia a página; use **Sair da tela inteira** ou Escape para voltar. Os componentes têm cores por função e o caminho atual é destacado.
+
+Há cinco cenários: instalação do projeto ao ambiente pronto, requisição HTTP (PHP, Node.js ou site estático), tarefa em segundo plano, administração com Docker/Compose e resposta de erro da infraestrutura. A instalação mostra preparação do `.env`, build da interface/imagem do painel, imagem pronta, criação do container, cadastro da aplicação, preparação dos runtimes, rede/rotas, montagem de pastas e volumes e início dos serviços. O fluxograma usa faixas sequenciais sem conexões cruzadas, setas animadas e a baleia acompanhando o trajeto. Uma nuvem ao lado da baleia, abaixo do mapa, explica cada etapa. Os controles por ícones têm identificação ao passar o mouse e nomes acessíveis. Montagens são feitas durante a criação dos containers; a sequência é didática, não uma execução real ou um cronograma estrito. O cenário de banco/fila é um exemplo de integração que depende do código e da configuração da aplicação. O painel administra os serviços; o tráfego da aplicação segue pelo proxy até seu runtime. O mapa é didático, não representa as sete camadas OSI e não consulta a saúde real dos serviços. Em dispositivos com movimento reduzido, avance manualmente pelas etapas.
 
 ### 🧭 Onde administrar cada recurso
 
@@ -166,6 +378,8 @@ As seções seguintes detalham tanto a operação geral quanto procedimentos esp
 ---
 
 <a id="modo-servidor"></a>
+
+<a id="sec-php-escolher-o-modo-do-servidor"></a>
 
 ## 🎛️ PHP: escolher o modo do servidor
 
@@ -198,6 +412,8 @@ Não é necessário reconstruir a imagem só para trocar o modo após a primeira
 ---
 
 <a id="instalar-octane"></a>
+
+<a id="sec-preparar-aplicacao-e-instalar-octane-somente-modo-octane"></a>
 
 ## 🐙 Preparar aplicação e instalar Octane (somente modo octane)
 
@@ -234,6 +450,8 @@ docker compose logs --tail=100 php traefik
 
 <a id="local-vps"></a>
 
+<a id="sec-configuracao-local-e-vps"></a>
+
 ## 🌍 Configuração local e VPS
 
 O `.env` da infraestrutura concentra variáveis operacionais e credenciais; `.env.example` contém o modelo sem senhas reais. Os cadastros do painel ficam em JSON e as configurações avançadas do PHP em INIs. Cada aplicação mantém suas próprias opções e dependências. Nos serviços PHP, as variáveis de banco e `APP_URL` injetadas pelo Compose prevalecem sobre o arquivo do projeto.
@@ -241,10 +459,10 @@ O `.env` da infraestrutura concentra variáveis operacionais e credenciais; `.en
 | Variável | Local | VPS |
 | --- | --- | --- |
 | `HTTP_BIND_ADDRESS` | `127.0.0.1` | `0.0.0.0` |
-| `HTTP_PORT` | `8080` | `80` |
+| `HTTP_PORT` | `80` | `80` |
 | `HTTPS_PORT` | `8443` | `443` |
 | `APP_DOMAIN` | `localhost` | `app.exemplo.com` |
-| `APP_URL` | `http://localhost:8080` | `https://app.exemplo.com` |
+| `APP_URL` | `http://localhost` | `https://app.exemplo.com` |
 | `TRAEFIK_TLS_ENABLED` | `false` | `true` |
 | `ACME_EMAIL` | vazio | seu email válido |
 
@@ -265,6 +483,7 @@ Na primeira instalação, se ainda não houver `.env`:
 ```bash
 cp .env.example .env
 nano .env
+node scripts/initialize-local.mjs
 ```
 
 Não copie esse modelo por cima de um `.env` já configurado. Preencha as senhas e a chave do cofre indicadas no modelo. Preserve versões fixadas, perfis e outras opções que já utiliza.
@@ -281,9 +500,9 @@ PANEL_WORKSPACE_DIRECTORY=/home/seu-usuario/projetos/infra-comserv
 PANEL_PROJECTS_DIRECTORY=/home/seu-usuario/projetos
 
 APP_DOMAIN=localhost
-APP_URL=http://localhost:8080
+APP_URL=http://localhost
 HTTP_BIND_ADDRESS=127.0.0.1
-HTTP_PORT=8080
+HTTP_PORT=80
 HTTPS_PORT=8443
 TRAEFIK_TLS_ENABLED=false
 ACME_EMAIL=
@@ -313,7 +532,7 @@ sudo docker compose config --quiet
 sudo docker compose up -d --build
 ```
 
-Abra a aplicação em **http://localhost:8080** e o painel em **http://localhost:9090**. Esse cenário usa HTTP, não emite certificado e não exige liberar portas públicas no roteador.
+Abra a aplicação em **http://localhost** e o painel em **http://localhost:9090**. Esse cenário usa HTTP, não emite certificado e não exige liberar portas públicas no roteador.
 
 [➡️ VPS com domínio](#env-vps-dominio) · [⬆️ Guia](#guia-env)
 
@@ -450,6 +669,8 @@ sudo docker compose exec php php artisan config:cache
 
 <a id="octane-deploy"></a>
 
+<a id="sec-workers-octane-e-deploy"></a>
+
 ## ⚡ Workers Octane e deploy
 
 `OCTANE_WORKERS` define os workers e `OCTANE_MAX_REQUESTS` a reciclagem periódica. Dimensione pelo consumo real de RAM/CPU. Mudanças no `.env` exigem `docker compose up -d --force-recreate php`.
@@ -466,6 +687,8 @@ Recrie o container quando mudar imagem, extensões ou INI. Não exponha a porta 
 ---
 
 <a id="php-modulos"></a>
+
+<a id="sec-arquivos-php-e-modulos"></a>
 
 ## 🐘 Arquivos PHP e módulos
 
@@ -539,6 +762,8 @@ As sessões nativas em `sessions.ini` são diferentes das sessões do Laravel: n
 
 <a id="npm"></a>
 
+<a id="sec-npm"></a>
+
 ## 📦 npm
 
 ```bash
@@ -553,6 +778,8 @@ Referências: [FrankenPHP com Laravel](https://frankenphp.dev/docs/laravel/), [L
 ---
 
 <a id="comandos-rapidos"></a>
+
+<a id="sec-comandos-rapidos-subir-parar-e-reconstruir"></a>
 
 ## 🚀 Comandos rápidos: subir, parar e reconstruir
 
@@ -724,6 +951,8 @@ Parar/reiniciar MariaDB interrompe o acesso ao banco; parar Traefik interrompe o
 
 <a id="trocar-projeto"></a>
 
+<a id="sec-trocar-o-diretorio-da-aplicacao-app-directory"></a>
+
 ## 📂 Trocar o diretório da aplicação (APP_DIRECTORY)
 
 Esta infraestrutura usa FrankenPHP, sem Nginx. A variável `APP_DIRECTORY` do `.env` da infraestrutura define a pasta do projeto no host, montada em `/var/www/html` nos containers PHP e Node. O servidor tradicional lê `/var/www/html/public`; Octane inicia a aplicação a partir do mesmo projeto.
@@ -804,6 +1033,8 @@ A pasta antiga permanece intacta no host. Para voltar, restaure o valor anterior
 ---
 
 <a id="manutencao"></a>
+
+<a id="sec-manutencao-aplicar-configuracoes-sem-apagar-volumes"></a>
 
 ## 🔧 Manutenção: aplicar configurações sem apagar volumes
 
@@ -968,6 +1199,8 @@ Mudar `DB_USERNAME` ou `DB_DATABASE` de um banco existente exige criar/ajustar c
 
 <a id="terminal-containers"></a>
 
+<a id="sec-terminal-entrar-nos-containers-e-executar-comandos"></a>
+
 ## 💻 Terminal: entrar nos containers e executar comandos
 
 Execute os comandos Docker no terminal do host, na pasta do `compose.yaml`. O serviço precisa estar em execução para usar `exec`; confira com `docker compose ps -a`.
@@ -1097,6 +1330,8 @@ docker compose run --rm --no-deps php bash
 
 <a id="administracao"></a>
 
+<a id="sec-administracao-diaria"></a>
+
 ## 🧭 Administração diária
 
 Execute os comandos na pasta desta infraestrutura. Não publique a saída de `docker compose config` sem revisão: ela pode conter senhas. Para validar sem mostrar valores, use `--quiet`.
@@ -1128,7 +1363,7 @@ docker compose ps -a
 docker compose exec mariadb healthcheck.sh --connect --innodb_initialized
 docker compose exec php php -v
 docker compose exec php php -v
-curl --fail --show-error --max-time 15 http://localhost:8080/
+curl --fail --show-error --max-time 15 http://localhost/
 ```
 
 Ajuste a URL do `curl` conforme `APP_URL`; na VPS use a URL HTTPS. O MariaDB tem healthcheck no Compose e deve aparecer como `healthy`. Nos demais serviços, `Up` indica que o processo está rodando, não que a aplicação esteja funcionando. Os testes de configuração não substituem uma requisição real ao Laravel. Respostas 500 exigem verificar também `storage/logs` da aplicação; 502 pede verificar FrankenPHP/Octane e suas conexões.
@@ -1149,6 +1384,8 @@ Atualizações de versão principal do MariaDB exigem um plano de migração pr�
 ---
 
 <a id="certificados"></a>
+
+<a id="sec-certificados-validade-e-renovacao"></a>
 
 ## 🔐 Certificados: validade e renovação
 
@@ -1193,6 +1430,8 @@ Recriar o container não força uma emissão imediata nem remove os limites da a
 ---
 
 <a id="backup-manual"></a>
+
+<a id="sec-backup-do-mariadb"></a>
 
 ## 🗄️ Backup do MariaDB
 
@@ -1255,6 +1494,8 @@ Valide os dados e os fluxos da aplicação. Uma importação sobre banco existen
 
 <a id="backup-arquivos"></a>
 
+<a id="sec-backup-dos-certificados-e-arquivos-da-aplicacao"></a>
+
 ## 🛡️ Backup dos certificados e arquivos da aplicação
 
 O dump SQL não inclui uploads, código, `.env`, `APP_KEY` ou certificados. Preserve o diretório da aplicação (principalmente uploads em `storage/app`), a configuração desta infraestrutura e o `.env` da aplicação. Preserve a `APP_KEY` original para conseguir ler os dados criptografados. Mantenha backups consistentes entre arquivos e banco.
@@ -1288,6 +1529,8 @@ Após restaurar, verifique logs e validade do certificado público.
 ---
 
 <a id="novos-servicos"></a>
+
+<a id="sec-adicionar-novos-servicos"></a>
 
 ## 🧩 Adicionar novos serviços
 
@@ -1328,6 +1571,8 @@ O middleware `force-https` já é definido por `routes.yml` quando TLS está hab
 ---
 
 <a id="valkey"></a>
+
+<a id="sec-valkey-8"></a>
 
 ## ⚡ Valkey 8
 
@@ -1398,6 +1643,8 @@ Copie o backup para fora da VPS e teste a restauração em instância isolada co
 ---
 
 <a id="filas-scheduler"></a>
+
+<a id="sec-filas-jobs-e-laravel-scheduler"></a>
 
 ## ⏱️ Filas, jobs e Laravel Scheduler
 
@@ -1540,6 +1787,8 @@ Referências: [filas Laravel](https://laravel.com/docs/13.x/queues) e [Scheduler
 
 <a id="frontend"></a>
 
+<a id="sec-laravel-puro-inertia-vite-hmr-e-ssr"></a>
+
 ## 🎨 Laravel puro, Inertia, Vite/HMR e SSR
 
 A infraestrutura suporta esses cenários por configuração no `.env`. Os pacotes, scripts npm, páginas e configuração SSR precisam existir no projeto apontado por `APP_DIRECTORY`; ligar um perfil não instala nem transforma automaticamente a aplicação.
@@ -1575,7 +1824,7 @@ docker compose logs -f --tail=100 vite
 docker compose stop vite
 ```
 
-Acesse a aplicação pela URL normal, por exemplo http://localhost:8080. Os assets e WebSocket HMR usam http://localhost:5173 e ws, por padrão. Se os arquivos não atualizarem no ambiente Docker, habilite `VITE_USE_POLLING=true` e recrie Vite.
+Acesse a aplicação pela URL normal, por exemplo http://localhost. Os assets e WebSocket HMR usam http://localhost:5173 e ws, por padrão. Se os arquivos não atualizarem no ambiente Docker, habilite `VITE_USE_POLLING=true` e recrie Vite.
 
 Para desativar, pare e remova o serviço **antes** de limpar o perfil:
 
@@ -1619,6 +1868,8 @@ Referências: [Vite no Laravel](https://laravel.com/docs/13.x/vite) e [SSR no In
 ---
 
 <a id="backup-automatico"></a>
+
+<a id="sec-backup-automatico-do-mariadb-configuracao-e-operacao"></a>
 
 ## 💾 Backup automático do MariaDB: configuração e operação
 
@@ -1756,6 +2007,8 @@ docker compose ps -a
 
 Não precisa reconstruir imagens: a correção é no Compose. Se continuar falhando, consulte `docker compose logs --tail=80 valkey`; não ignore a dependência de saúde nem apague os dados.
 
+<a id="sec-paginas-de-erro-do-servidor"></a>
+
 ## 🎭 Páginas de erro do servidor
 
 No modo `traditional`, `docker/php/errors` contém páginas independentes do Laravel para 404, 500, 502, 503 e 504. A configuração do Caddy captura esses status em navegações HTML, preservando o código HTTP. Respostas da aplicação para API e requisições com `X-Inertia` não são substituídas. Os handlers de falhas internas do servidor também usam as páginas estáticas.
@@ -1766,10 +2019,12 @@ As páginas não corrigem o erro: um Laravel sem dependências continuará retor
 docker compose config --quiet
 docker compose run --rm --no-deps php frankenphp validate --config /etc/frankenphp/Caddyfile --adapter caddyfile
 docker compose up -d --no-deps --force-recreate php
-curl -i -H 'Accept: text/html' http://localhost:8080/rota-inexistente
+curl -i -H 'Accept: text/html' http://localhost/rota-inexistente
 ```
 
 Edite o HTML diretamente para personalizar; não precisa reconstruir a imagem. No modo Octane, o servidor usa a configuração do pacote Octane e este Caddyfile não se aplica: personalize as páginas no Laravel ou integre um Caddyfile específico compatível com a versão do Octane. Erros gerados pelo próprio Traefik (como backend PHP desligado) também não passam pelo handler do FrankenPHP e não usam essas páginas.
+
+<a id="sec-erro-500-detalhado-em-desenvolvimento-local"></a>
 
 ## 🔎 Erro 500 detalhado em desenvolvimento local
 
@@ -1808,6 +2063,8 @@ A página estática 500 apresenta uma mensagem genérica ao visitante, sem ident
 
 <a id="multiplas-aplicacoes"></a>
 
+<a id="sec-varias-aplicacoes-com-subdominios"></a>
+
 ## 🏘️ Várias aplicações com subdomínios
 
 A aplicação principal continua usando `APP_DIRECTORY`, `APP_DOMAIN`, `APP_URL` e o container `php`. Agora existem **dois slots adicionais opcionais**, `app2` e `app3`. Cada aplicação tem um processo FrankenPHP próprio; todas compartilham Traefik, MariaDB e Valkey. Não é necessário publicar outra porta HTTP.
@@ -1838,7 +2095,7 @@ APP_3_DOCUMENT_ROOT=/var/www/html
 
 Use `/var/www/html/public` para Laravel e `/var/www/html` para PHP convencional com `index.php` na raiz. O document root deve conter apenas arquivos públicos; nunca exponha a raiz de um projeto Laravel. Diretórios precisam existir. Para aplicações PHP convencionais, o fallback de rotas segue o comportamento do servidor FrankenPHP; ajuste o Caddyfile se o projeto exigir regras específicas.
 
-Com `HTTP_PORT=8080`, mantenha a mesma porta para todos, incluindo nas URLs: `http://financeiro.localhost:8080`. Os domínios não incluem porta. Navegadores modernos normalmente resolvem subdomínios `.localhost` para loopback; se seu ambiente não resolver, adicione no `/etc/hosts`:
+Com `HTTP_PORT=80`, mantenha a mesma porta para todos, incluindo nas URLs: `http://financeiro.localhost`. Os domínios não incluem porta. Navegadores modernos normalmente resolvem subdomínios `.localhost` para loopback; se seu ambiente não resolver, adicione no `/etc/hosts`:
 
 ```text
 127.0.0.1 localhost financeiro.localhost site.localhost
@@ -1912,7 +2169,9 @@ Os serviços Vite/SSR existentes continuam ligados à aplicação principal. Os 
 
 <a id="painel-administrativo"></a>
 
-## 🖥️ Infra Control: painel administrativo
+<a id="sec-jubart-painel-administrativo"></a>
+
+## Jubart: painel administrativo
 
 O painel Node.js gerencia os serviços deste projeto Docker Compose, com uma interface local inspirada no fluxo de ferramentas de gerenciamento de proxy. Ele oferece:
 
@@ -2037,9 +2296,11 @@ Esses testes não iniciam nem alteram seus containers reais. Para validação op
 
 ---
 
+<a id="sec-painel-filas-jobs-e-laravel-scheduler"></a>
+
 ## ⏱️ Painel: filas, jobs e Laravel Scheduler
 
-A área **Filas & Scheduler** do Infra Control gerencia o trabalho em segundo plano de cada aplicação Laravel. Funciona nos modos tradicional e Octane; não exige Supervisor. Os processos usam a imagem, o diretório e as credenciais do respectivo projeto.
+A área **Filas & Scheduler** do Jubart gerencia o trabalho em segundo plano de cada aplicação Laravel. Funciona nos modos tradicional e Octane; não exige Supervisor. Os processos usam a imagem, o diretório e as credenciais do respectivo projeto.
 
 ### 🚀 Aplicar esta atualização
 
@@ -2141,6 +2402,8 @@ sudo docker compose up -d --build --no-deps panel
 
 Atualize a página no navegador depois da reconstrução. O aviso de saída com alterações não salvas continua sob controle do navegador, pois é uma proteção de navegação.
 
+<a id="sec-logs-detalhes-dos-containers-e-console-web"></a>
+
 ## 📜 Logs, detalhes dos containers e console web
 
 Na visão geral, cada serviço agora oferece **Detalhes**, com ID curto, imagem, data de criação, última inicialização, último encerramento, código de saída, reinícios, diretório de trabalho e portas publicadas. As principais informações também aparecem na tabela, como no `docker ps -a`. Datas são exibidas no fuso do navegador. São dados do container atual, não um histórico de todas as execuções: recriar um container reinicia seu histórico e a contagem de reinícios.
@@ -2228,6 +2491,8 @@ Para atualizar o painel após esta mudança:
 sudo docker compose up -d --build --no-deps panel
 ```
 
+<a id="sec-metricas-ao-vivo-cpu-memoria-e-requisicoes"></a>
+
 ## 📈 Métricas ao vivo: CPU, memória e requisições
 
 A guia **Métricas ao vivo** do painel apresenta:
@@ -2278,6 +2543,8 @@ Quando Docker ou Traefik não puderem ser consultados, a interface indica falha/
 Esta guia não é armazenamento histórico durável, monitoramento com alertas ou cobrança de uso. Para histórico de dias/meses, alertas e percentis, pode-se adicionar Prometheus/Grafana posteriormente. Referências: [Docker stats](https://docs.docker.com/reference/cli/docker/container/stats/) e [métricas do Traefik](https://doc.traefik.io/traefik/reference/install-configuration/observability/metrics/).
 
 <a id="bancos-painel"></a>
+
+<a id="sec-bancos-de-dados-mariadb-e-postgresql-compartilhados"></a>
 
 ## 🗄️ Bancos de dados: MariaDB e PostgreSQL compartilhados
 
@@ -2956,7 +3223,7 @@ Na guia **Aplicações**, clique em **Nova aplicação**, informe nome, tipo (PH
 
 O cadastro vincula um projeto existente; não cria código, diretórios, dependências ou bancos automaticamente. O diretório precisa estar acessível pelo volume `PANEL_PROJECTS_DIRECTORY`. Novas aplicações recebem identificadores como `app4`, com serviços `php-app4`, `php-app5` etc., mesmo nos tipos Node.js/Estática. O domínio/subdomínio escolhe o destino; portas internas podem se repetir em containers diferentes. O limite de proteção é de 100 aplicações.
 
-A infraestrutura gera serviços em `config/apps.compose.yaml` e rotas das novas aplicações em `docker/traefik/extra-apps.json`. As três configurações antigas e seus volumes são preservados. **Não edite os arquivos gerados.** Para PHP adicional, configure acesso próprio ao banco: por exemplo, `APP_4_DB_DATABASE`, `APP_4_DB_USERNAME` e `APP_4_DB_PASSWORD` no `.env` da infraestrutura antes de aplicar. As credenciais de banco da aplicação principal não são herdadas por esses novos cadastros. Crie o banco/usuário na guia Bancos. Os serviços compartilhados permanecem disponíveis pelas redes internas.
+A infraestrutura gera serviços em `config/apps.compose.yaml` e rotas das novas aplicações em `docker/traefik/extra-apps.yml`. As três configurações antigas e seus volumes são preservados. **Não edite os arquivos gerados.** Para PHP adicional, configure acesso próprio ao banco: por exemplo, `APP_4_DB_DATABASE`, `APP_4_DB_USERNAME` e `APP_4_DB_PASSWORD` no `.env` da infraestrutura antes de aplicar. As credenciais de banco da aplicação principal não são herdadas por esses novos cadastros. Crie o banco/usuário na guia Bancos. Os serviços compartilhados permanecem disponíveis pelas redes internas.
 
 O botão **Importar .env** foi removido: o painel usa os formulários e o JSON de configuração e propaga seus apontamentos para o `.env` da infraestrutura ao aplicar. A opção **Editar/Criar .env do projeto** nos detalhes continua existindo, pois edita o arquivo da aplicação, não importa configurações para o painel. Para uma aplicação nova, salve primeiro o cadastro para habilitar esse editor.
 
@@ -3074,16 +3341,16 @@ MariaDB e PostgreSQL continuam com serviços e volumes próprios. O seletor de S
 
 ### 📤 Exportação e download SQL
 
-Em **Importar / exportar SQL**, selecione o SGBD e o banco e clique em **Criar exportação SQL**. Confira o comando e confirme. Todas as exportações, inclusive pequenas, passam pela fila; isso permite processar arquivos grandes sem carregar o dump inteiro na memória do navegador ou do painel.
+Em **Importar / exportar SQL**, selecione a conexão cadastrada e escolha **Estrutura e dados**, **Somente estrutura** ou **Somente dados**, selecione SQL ou SQL gzip e clique em **Preparar exportação**. Confira o comando e confirme. Todas as exportações, inclusive pequenas, passam pela fila; isso permite processar arquivos grandes sem carregar o dump inteiro na memória do navegador ou do painel.
 
-A fila processa **uma tarefa por vez**, com até 20 tarefas pendentes/em execução. Mostra estado, bytes transferidos, criação, início e término. Quando a exportação concluir, o botão **Baixar .sql** disponibiliza o arquivo por streaming, com autenticação. O arquivo fica em `.panel-state/sql-transfers/`, com acesso privado. Exports não são enviados automaticamente para S3 nem seguem a retenção dos backups agendados; são transferências administrativas independentes. Preserve espaço e remova exports antigos manualmente quando não forem mais necessários.
+A fila processa **uma tarefa por vez**, com até 20 tarefas pendentes/em execução. Mostra estado, bytes e horário de criação. O cartão de acompanhamento apresenta o percentual real do envio e da leitura do arquivo importado (limitado a 99% até o cliente confirmar a conclusão). Leitura não representa confirmação de cada instrução no banco. A exportação mostra indicador de atividade e bytes gerados, pois o tamanho final é desconhecido. Após iniciar o download, acompanhe seu progresso na área de downloads do navegador. Quando a exportação concluir, o botão **Baixar .sql** disponibiliza o arquivo por streaming, com autenticação. O botão adapta a extensão para `.sql.gz` quando houver compressão gzip. O arquivo fica em `.panel-state/sql-transfers/`, com acesso privado. Exports não são enviados automaticamente para S3 nem seguem a retenção dos backups agendados; são transferências administrativas independentes. Preserve espaço e remova exports antigos manualmente quando não forem mais necessários.
 
 MariaDB usa [`mariadb-dump`](https://mariadb.com/docs/server/clients-and-utilities/backup-restore-and-import-clients/mariadb-dump) com `--single-transaction`, rotinas, eventos e triggers. Não altere schemas durante o dump; a consistência transacional se aplica às tabelas transacionais, não a todos os engines. PostgreSQL usa [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) em SQL de texto, sem proprietários/ACLs. Os comandos são mostrados antes de confirmar. Esses arquivos são destinados ao mesmo SGBD, sem conversão entre MariaDB e PostgreSQL.
 
 ### 📥 Importar SQL existente
 
 1. Se necessário, crie o banco na guia Bancos e uma conta com permissões nesse banco na guia Usuários.
-2. Na guia de transferências, escolha SGBD e banco, selecione um arquivo `.sql` de texto e informe usuário/senha da conta do banco.
+2. Na guia de transferências, escolha SGBD e banco, selecione uma conexão cadastrada em **Dados → Conexões** e um arquivo `.sql` ou `.sql.gz`. Defina a codificação UTF-8 ou Latin-1. No MariaDB, também é possível desativar a verificação de chaves estrangeiras ao abrir a sessão; o próprio dump pode alterar essa configuração.
 3. Confirme o envio. Depois, revise a segunda confirmação para **executar** a importação.
 4. Acompanhe a tarefa na fila e confira o resultado na aplicação/banco.
 
@@ -3095,9 +3362,10 @@ O limite de upload é configurado em bytes no `.env`:
 
 ```dotenv
 SQL_UPLOAD_MAX_BYTES=1073741824
+SQL_IMPORT_MAX_BYTES=4294967296
 ```
 
-O padrão é 1 GiB. O envio aceita SQL sem compactação. Arquivos de importação são removidos após a tarefa terminar; uploads órfãos com mais de 24 horas são limpos durante novos envios. Há limite de 20 uploads pendentes. Ao cancelar a confirmação de execução, o upload não executa SQL e fica aguardando essa limpeza. Espaço em disco e eventuais limites de proxies externos também precisam comportar o arquivo.
+O limite de envio padrão é 1 GiB. O SQL após descompactação tem limite padrão de 4 GiB (também aplicado a arquivos sem compressão). São aceitos SQL sem compactação e SQL gzip; ZIP/bzip2 não são suportados. Os limites são independentes dos limites do phpMyAdmin. Arquivos de importação são removidos após a tarefa terminar; uploads órfãos com mais de 24 horas são limpos durante novos envios. Há limite de 20 uploads pendentes. Ao cancelar a confirmação de execução, o upload não executa SQL e fica aguardando essa limpeza. Espaço em disco e eventuais limites de proxies externos também precisam comportar o arquivo.
 
 <a id="informacoes-host"></a>
 
@@ -3123,12 +3391,14 @@ A integração dispõe de:
 
 - **MCP Streamable HTTP:** `/mcp`, com SDK oficial e autenticação Bearer por requisição.
 - **Consulta:** `GET /api/ai/read`, exclusivamente leitura de containers, tecnologias, logs, filas/jobs e processos.
-- **Execução:** `PUT /api/ai/execute`, restrito às ações de automação permitidas para a chave, com requestId idempotente.
+- **Execução:** `PUT /api/ai/execute`, restrito às aplicações e ações permitidas para a chave, com requestId idempotente.
+- **Contexto:** `infra_read` com `resource=context` reúne aplicações, revisões, saúde, WebSockets, automações e últimas operações da própria chave. `resource=guide` entrega a Skill e a referência.
+- **Prévia:** `infra_plan` ou `POST /api/ai/plan` mostra comandos e impactos sem executar.
 - **Acompanhamento:** `GET /api/ai/operations/{id}`, limitado às operações da própria chave.
 
 Não há terminal, SQL, edição de arquivos ou acesso genérico ao Docker por essa API. Operações via IA são autorizadas pelos escopos/ações da chave e não abrem uma confirmação no painel; mantenha a aprovação de ferramentas no cliente e conceda somente as ações necessárias. `job.interrupt` para o worker inteiro, sem cancelamento seletivo ou rollback de um job.
 
-Consulte a [documentação técnica completa](docs/MCP.md) para autenticação, parâmetros, exemplos, limites e configuração do VS Code. A [Skill infra-control-mcp](.github/skills/infra-control-mcp/SKILL.md) acompanha uma referência autocontida da API e orienta diagnóstico, interpretação de logs e execução autorizada. Ela pode ser copiada para o diretório de skills aceito pela ferramenta de IA; não altera nem instala configurações do editor automaticamente. A referência da Skill espelha `docs/MCP.md`; mantenha ambos sincronizados ao alterar o contrato.
+Consulte a [documentação técnica completa](docs/MCP.md) para autenticação, parâmetros, exemplos, limites e configuração do VS Code. A [Skill jubart-mcp](.github/skills/jubart-mcp/SKILL.md) acompanha uma referência autocontida da API e orienta diagnóstico, interpretação de logs e execução autorizada. Ela pode ser copiada para o diretório de skills aceito pela ferramenta de IA; não altera nem instala configurações do editor automaticamente. A própria tela oferece links autenticados para abrir/baixar SKILL.md, sua referência e a documentação. Selecione explicitamente as aplicações e ações de cada chave. Chaves antigas mantêm seu escopo anterior; revogue e recrie para restringir. Início/parada/reinício afeta apenas o container da aplicação escolhida; configurar WebSocket permite ativação, porta e origens, preservando imagem, comando, provedor e domínio. Não há configuração global via IA.
 
 As dependências MCP/Zod estão fixadas no package-lock e são instaladas no build do painel. Para disponibilizar:
 
@@ -3328,7 +3598,7 @@ As **10 imagens externas** do Compose e dos estágios de build usam referências
 
 Cada referência acima é usada com `@sha256:...`. Os valores completos ficam no `.env`, no `.env.example`, nos defaults dos Dockerfiles e no [lock de imagens](config/images.lock.json). A guia Tecnologias e conceitos permite consultá-los. Não remova o digest ao mudar uma tag. Atualize versão e digest juntos, revise o lock e defaults, valide com `docker compose config --quiet` e reconstrua apenas os serviços afetados. Fixação não dispensa atualizações de segurança e não significa que APT ou compilação de extensões sejam reproduzíveis bit a bit.
 
-A infraestrutura deve usar **dependências open source**, incluindo componentes de execução e ferramentas de build/teste. O inventário com licenças e links oficiais está em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). O [relatório npm](config/dependencies.licenses.json) relaciona as licenças declaradas das 225 entradas do lock atual. Isso não substitui uma auditoria completa/SBOM das imagens e seus pacotes de sistema.
+A infraestrutura deve usar **dependências open source**, incluindo componentes de execução e ferramentas de build/teste. O inventário com licenças e links oficiais está em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). O [relatório npm](config/dependencies.licenses.json) relaciona as licenças declaradas das entradas do lock atual. Isso não substitui uma auditoria completa/SBOM das imagens e seus pacotes de sistema.
 
 **Alteração de compatibilidade:** SQL Server via ODBC Microsoft está bloqueado para respeitar esta política. `PHP_INSTALL_SQLSERVER` deve permanecer `false`. A habilitação é recusada no painel/backend e no build; não há substituição automática por outro driver. Se uma imagem antiga tiver esses componentes, ela precisa ser reconstruída para aplicar a restrição. Bancos MariaDB/PostgreSQL e drivers open source permanecem disponíveis.
 
@@ -3484,6 +3754,8 @@ sudo docker compose up -d --build --no-deps panel backup backup-postgres
 
 Aguarde backups ativos terminarem antes de atualizar os serviços de backup. Depois, Ctrl + Shift + R, entre com o administrador e cadastre as contas. Nenhum usuário adicional ou permissão é criado automaticamente pela atualização.
 
+<a id="sec-escolher-quais-bancos-iniciar"></a>
+
 ## 🗄️ Escolher quais bancos iniciar
 
 A infraestrutura inicia **MariaDB e PostgreSQL por padrão**. No `.env` da infraestrutura, configure:
@@ -3583,10 +3855,10 @@ Os indicadores do topo mostram o resumo da infraestrutura; a tabela completa de 
 
 Em **Dados → Bancos de dados**, selecione MariaDB ou PostgreSQL e clique em **Console SQL** na linha do banco. A janela abre com esse banco selecionado e permite trocar entre os bancos de aplicação listados naquele SGBD.
 
-1. O console busca uma **conexão automática** para o banco selecionado. Se houver credencial de aplicação no `.env` ou senha registrada no cofre com acesso ao banco, a conta é selecionada sem digitar a senha. Para usar outra conta, escolha **Informar outra conta manualmente**. Contas administrativas/de sistema e contas com privilégios globais/administrativos são recusadas pelo console.
-2. Digite **uma instrução SQL por execução**. Clique em **Executar SQL** ou use **Ctrl+Enter** e confirme o resumo e os impactos.
+1. Cadastre uma conta em **Dados → Conexões**, com nome, servidor, banco, usuário e senha. Use **Testar conexão** antes de salvar, se desejar. No console, selecione uma conexão e clique em **Conectar e abrir editor**; o acesso é validado antes de liberar a edição. Não há preenchimento implícito a partir do `.env`. Contas administrativas/de sistema e privilégios globais/administrativos continuam sujeitos às proteções do console.
+2. Digite uma ou várias instruções separadas por `;`. Clique em **Executar tudo**, ou selecione um trecho e use **Executar seleção**. **Ctrl/⌘+Enter** executa a seleção, quando houver, ou todo o editor; confirme o resumo e os impactos.
 3. Um `SELECT` retorna uma tabela com nomes das colunas, valores, `NULL`, quantidade de linhas e tempo de execução. Comandos sem linhas retornadas mostram o total de linhas afetadas.
-4. Use a busca para filtrar as linhas já carregadas. **Exportar CSV** baixa apenas esse resultado, não o banco inteiro.
+4. A guia Resultados permite selecionar a instrução quando houver múltiplos resultados. **Exportar CSV** baixa apenas o resultado selecionado, não o banco inteiro.
 
 Exemplos (substitua a tabela/colunas pelas existentes no projeto):
 
@@ -3606,9 +3878,9 @@ As alterações dependem dos privilégios da conta usada. Para consultar sem per
 
 **Limites e comportamento:**
 
-- Até **15 segundos**, **500 linhas**, **100 colunas** e aproximadamente **1 MiB** de valores retornados. Células acima de 8 KiB são abreviadas; o SQL tem limite de 64 KiB.
+- Até **20 instruções por lote**, **15 segundos por instrução**, **30 segundos de execução do lote**, **500 linhas no lote**, **100 colunas por resultado** e aproximadamente **1 MiB** de valores retornados. Células acima de 8 KiB são abreviadas; o SQL tem limite de 64 KiB.
 - Ao atingir um limite de resultado, a conexão é encerrada e o resultado é marcado como limitado. Use `WHERE` e `LIMIT` para obter um recorte menor. O driver ainda precisa receber cada valor do protocolo antes de abreviá-lo; esses limites não representam um teto rígido de memória do servidor SQL.
-- Cada execução abre uma conexão nova. `BEGIN`, variáveis de sessão, tabelas temporárias e transações não continuam entre cliques. Scripts com várias instruções, COPY via protocolo e procedimentos com múltiplos conjuntos de resultados não fazem parte deste console; use a área de importação/exportação ou um cliente dedicado.
+- Cada instrução abre uma conexão nova. O lote é sequencial e para no primeiro erro ou limite, preservando os resultados anteriores; as próximas instruções não são executadas. Não há transação compartilhada nem rollback automático. Lotes com controle de transação, estado de sessão ou criação de rotinas/tabelas temporárias são recusados antes de iniciar. COPY via protocolo, DELIMITER e procedimentos com múltiplos conjuntos de resultados exigem importação/exportação ou um cliente dedicado.
 - Comandos podem alterar/excluir dados e estruturas conforme os privilégios da conta. Selecionar um banco não restringe acessos a outros bancos/schemas já permitidos à conta. Não há desfazer automático; erro, timeout ou desconexão podem deixar alterações parciais ou já confirmadas. Confira o estado antes de repetir.
 - O SQL, a senha e o resultado ficam somente na janela; não são salvos como histórico do painel. A auditoria guarda ator, SGBD, banco, usuário, hash do SQL e desfecho, sem gravar o SQL completo nem a senha. O próprio SGBD pode registrar consultas conforme sua configuração.
 - O CSV contém somente as linhas retornadas, inclusive abreviações. Textos que poderiam ser interpretados como fórmulas recebem proteção ao exportar para planilhas. Preserve o arquivo como informação sensível.
@@ -3623,16 +3895,13 @@ sudo docker compose up -d --build --force-recreate --no-deps panel
 
 Recarregue com **Ctrl+Shift+R**. Nenhuma consulta é executada durante o build e os volumes são preservados. Para arquivos grandes, consulte a área **Importar / exportar SQL**; para recuperação, utilize os [backups](#backup-automatico).
 
-#### 🔐 Credenciais automáticas do console SQL
+#### 🔐 Conexões cadastradas
 
-Ao abrir o console ou trocar de banco, o painel lista somente fontes disponíveis para aquele banco:
+**Dados → Conexões** centraliza os acessos MariaDB e PostgreSQL gerenciados por este Jubart. Ao abrir a área ou um seletor de conexões, o painel cadastra os padrões que ainda não foram importados: contas de aplicação MariaDB do `.env` (principal e grupos `APP_N_DB_*`) e contas MariaDB/PostgreSQL com senha conhecida no cofre e acesso identificado ao banco. Contas administrativas protegidas, bloqueadas, bancos de sistema e senhas desconhecidas não são importados. No PostgreSQL, `POSTGRES_USER` é a conta administrativa da infraestrutura; use as contas de aplicação criadas no painel com acesso concedido ao banco. Não são criados usuários nem alteradas permissões no SGBD. Cadastros existentes não são duplicados ou sobrescritos; conexões removidas não reaparecem. O registro dessa importação fica em `.panel-state/database-connections/defaults.json`, preservado junto ao cadastro e à chave. Alterações posteriores de senha no banco não sobrescrevem silenciosamente uma conexão já cadastrada; edite-a quando necessário. Cada cadastro contém nome, servidor, banco, usuário e senha. É possível criar, editar, testar e remover conexões. O teste executa somente `SELECT 1 AS connected;`, usando as verificações do console; ele não comprova permissões para todas as operações de exportação/importação. Testar antes de salvar é opcional. Ao editar, senha vazia mantém a atual; a senha salva nunca é devolvida ao navegador.
 
-- **MariaDB / `.env` da infraestrutura:** `DB_DATABASE`, `DB_USERNAME` e `DB_PASSWORD` para o banco principal; também os grupos explícitos `APP_N_DB_DATABASE`, `APP_N_DB_USERNAME` e `APP_N_DB_PASSWORD` das aplicações adicionais. O nome do banco precisa corresponder ao selecionado.
-- **Cofre do painel / MariaDB e PostgreSQL:** contas de aplicação com senha definida pelo painel e concessão de acesso ao banco. Crie ou altere a senha em **Usuários dos bancos** e conceda o acesso em **Gerenciar acesso**. A criação do banco, sozinha, não cria automaticamente uma credencial.
+Console, importação e exportação exigem uma conexão cadastrada. O servidor resolve banco, usuário e senha pelo identificador, recusa divergências de banco/servidor e não aceita credenciais manuais como substituto nessas rotas. O editor abre após validar a conexão. As instruções continuam usando conexões SQL independentes, sem uma transação compartilhada. A exportação usa a conta selecionada, com as permissões necessárias ao dump; não troca silenciosamente para a conta administrativa.
 
-O navegador recebe apenas a identificação da conta e sua origem. A senha é lida no servidor na hora da execução e não é preenchida no HTML, enviada na listagem ou salva no histórico SQL. No PostgreSQL, `POSTGRES_USER`/`POSTGRES_PASSWORD` correspondem à conta administrativa da infraestrutura e não são reutilizados automaticamente.
-
-Se não houver fonte elegível, o console permite informar uma conta manualmente. Contas externas com senhas desconhecidas não podem ser recuperadas pelo painel; contas bloqueadas e administrativas não são sugeridas pelo cofre. Se uma senha do `.env` estiver desatualizada em relação ao banco, a conexão falhará até sincronizar a senha real — editar o arquivo não altera a senha dentro do SGBD. A disponibilidade da credencial não substitui os privilégios concedidos pelo próprio banco.
+As conexões são compartilhadas entre administradores do painel e não estão expostas às contas restritas ou ao MCP. A senha é cifrada com AES-256-GCM em `.panel-state/database-connections/connections.json`, usando a chave local em `.panel-state/database-connections/key`. Preserve **a pasta inteira** nos backups protegidos. Listagens, resultados e auditoria não incluem a senha. Remover um cadastro não remove banco/usuário nem interrompe tarefas já iniciadas; próximas execuções com aquele identificador são recusadas. Estes cadastros não configuram acesso a servidores externos ou hosts arbitrários.
 
 ### 🍎 Visual e movimento inspirados no macOS/iOS
 
@@ -3661,3 +3930,597 @@ Para aplicar a atualização visual, execute `sudo docker compose up -d --build 
 A versão aparece ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, inicialmente `1.0.0`. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
 
 Para registrar uma nova versão, use `npm --prefix docker/panel version 1.0.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do painel e não altera versões das imagens ou das aplicações hospedadas.
+
+### Acesso individual a MariaDB, PostgreSQL e phpMyAdmin
+
+Em **Proxy & acessos → Acesso aos bancos e phpMyAdmin**, os três serviços aparecem em lista. Clique em **Configurar acesso** para escolher **Somente neste servidor / túnel SSH** (`127.0.0.1`) ou **Público / outras máquinas** (`0.0.0.0`) e a porta no host. Não altere as portas internas: MariaDB usa 3306, PostgreSQL 5432 e phpMyAdmin 80. As portas padrão no host são 3306, 5432 e 8081, respectivamente.
+
+A lista distingue **acesso salvo**, **configurado no .env** (nos detalhes) e **publicado no Docker**. “Pendente” indica divergência ou container sem execução; salvar um arquivo não significa que a porta esteja aplicada. O estado não afirma que o firewall do provedor permite acesso externo. Serviços desativados por `MARIADB_ENABLED=false`/`POSTGRES_ENABLED=false` não podem ser publicados por essa tela.
+
+**Salvar e aplicar somente [serviço]** mostra um resumo, comandos e impactos antes de executar. O painel preserva uma cópia anterior em `.panel-state/service-access/`, atualiza somente as variáveis `*_BIND_ADDRESS`/`*_PORT` selecionadas e seu registro em `config/apps.json`, valida o Compose e executa:
+
+```bash
+# Exemplo para MariaDB; substitua por postgres ou phpmyadmin.
+docker compose up -d --no-deps --no-build --force-recreate --wait --wait-timeout 90 mariadb
+```
+
+Não há build de imagem nem recriação dos serviços dependentes. As conexões do serviço selecionado sofrem uma breve interrupção; bancos e volumes são preservados. Se o acesso já estiver aplicado, o container não é recriado. Se a aplicação falhar, os valores permanecem salvos, a lista exibe a publicação real e permite reaplicar após corrigir o erro (por exemplo, porta ocupada). Atualize e reabra os detalhes se outra sessão mudar a configuração. Rascunhos não salvos de outras telas precisam ser resolvidos antes.
+
+O acesso público é publicado em todas as interfaces e depende das regras do firewall do host/provedor. Clientes de banco usam as credenciais e permissões do SGBD, não a senha SSH. A porta direta do **phpMyAdmin usa HTTP**, sem criptografia; para acessá-lo com segurança pela Internet, use túnel SSH ou uma rota HTTPS no proxy. Esta opção de publicação direta não gera certificados nem substitui rotas HTTPS existentes.
+
+A API administrativa é `GET /api/service-access` (listagem e revisão) e `POST /api/service-access/{mariadb|postgres|phpmyadmin}` com `revision`, `bindAddress` e `port`. Exige sessão de administrador e CSRF para aplicar; não está disponível às chaves MCP nem a contas restritas. Cada aplicação registra auditoria sem credenciais.
+
+Para instalar esta atualização do painel local, execute `sudo docker compose up -d --build --no-deps panel` e pressione Ctrl+Shift+R. A VPS não é alterada por essa atualização local.
+
+<a id="primeiro-acesso-vps"></a>
+<a id="sec-primeiro-acesso-ao-painel-na-vps-http-https-ou-tunel-ssh"></a>
+
+## Primeiro acesso ao painel na VPS: HTTP, HTTPS ou túnel SSH
+
+Instalou a infraestrutura e não sabe onde entrar? O endereço `localhost` da sua máquina não é o `localhost` da VPS. Escolha um dos caminhos abaixo. Dentro do painel, consulte **Integrações → Como acessar**: informe IP/hostname, usuário e porta SSH da VPS e abra as instruções de cada serviço. Esses dados servem apenas para gerar exemplos, sem alterar o servidor ou exibir senhas.
+
+- [Acesso privado por túnel SSH](#acesso-privado-tunel)
+- [Acesso direto por HTTP](#acesso-direto-http)
+- [Acesso por HTTPS e domínio](#acesso-https-dominio)
+- [Bancos e phpMyAdmin pelo túnel](#bancos-pelo-tunel)
+- [Diagnosticar problemas de acesso](#diagnosticar-acesso)
+
+<a id="acesso-privado-tunel"></a>
+### Opção 1 — túnel SSH, sem publicar a porta do painel
+
+No `.env` **da infraestrutura na VPS**, para uma instalação que usará HTTP somente dentro do túnel:
+
+```dotenv
+PANEL_BIND_ADDRESS=127.0.0.1
+PANEL_PORT=9090
+PANEL_PROXY_ENABLED=false
+PANEL_TLS_ENABLED=false
+PANEL_COOKIE_SECURE=false
+# Defina PANEL_USERNAME e uma PANEL_PASSWORD forte antes de iniciar.
+```
+
+Na VPS, após editar:
+
+```bash
+docker compose up -d --build --no-deps panel
+docker compose ps panel
+```
+
+No **seu computador**, execute (troque usuário e IP pelos da sua VPS; `-p` é a porta do SSH):
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -p 22 -L 19090:127.0.0.1:9090 usuario@IP_DA_VPS
+```
+
+Mantenha o terminal aberto e acesse **http://127.0.0.1:19090/** no navegador do seu computador. Entre com `PANEL_USERNAME`/`PANEL_PASSWORD` ou uma conta cadastrada no painel. A senha solicitada no terminal é a do SSH, que é independente da senha do painel. Ctrl+C encerra o túnel. Se 19090 estiver ocupada, escolha outra porta local e use-a na URL. Só a porta SSH precisa estar liberada externamente; não precisa abrir 9090 no firewall.
+
+**Se o painel já usa HTTPS e `PANEL_COOKIE_SECURE=true`, não desative essa proteção para acessar por HTTP público.** Prefira sua URL HTTPS existente. Um túnel HTTP não permite autenticar com esse cookie: para manter HTTPS no túnel, encaminhe a porta HTTPS do proxy e preserve o hostname do certificado. O exemplo acima destina-se à instalação com HTTP privado pelo túnel.
+
+<a id="acesso-direto-http"></a>
+### Opção 2 — acesso direto por IP e porta HTTP
+
+Para uma rede confiável, configure `PANEL_BIND_ADDRESS=0.0.0.0`, `PANEL_PORT=9090` e `PANEL_COOKIE_SECURE=false` na VPS. Recrie somente o painel com `docker compose up -d --no-deps panel`, libere TCP 9090 no firewall do host/provedor e entre por **http://IP_DA_VPS:9090/**. HTTP não criptografa usuário e senha: para a Internet, prefira HTTPS ou túnel SSH.
+
+Não use `http://localhost:9090` no seu computador esperando chegar à VPS sem um túnel. Não use `https://IP_DA_VPS:9090`: a porta direta do painel serve HTTP. Expor em `0.0.0.0` só será efetivo após recriar o container; liberar apenas o firewall não muda uma publicação em `127.0.0.1`.
+
+<a id="acesso-https-dominio"></a>
+### Opção 3 — acesso por domínio com HTTPS no Traefik
+
+Crie um registro DNS, por exemplo `painel.seudominio.com`, apontando para a VPS. No `.env` da infraestrutura, use o mesmo domínio:
+
+```dotenv
+HTTP_BIND_ADDRESS=0.0.0.0
+HTTP_PORT=80
+HTTPS_PORT=443
+TRAEFIK_TLS_ENABLED=true
+ACME_EMAIL=seu-email@exemplo.com
+PANEL_BIND_ADDRESS=127.0.0.1
+PANEL_PORT=9090
+PANEL_PROXY_ENABLED=true
+PANEL_DOMAIN=painel.seudominio.com
+PANEL_TLS_ENABLED=true
+PANEL_COOKIE_SECURE=true
+```
+
+Libere TCP **80 e 443** no firewall do host/provedor; mantenha a porta SSH disponível para administração. O domínio do painel não pode ser usado por outra aplicação. Aplique os valores na configuração do painel/JSON conforme as instruções de ambientes local/VPS e HTTPS deste README e recrie os serviços necessários:
+
+```bash
+docker compose config --quiet
+docker compose up -d --no-deps traefik panel
+docker compose logs --tail=100 traefik
+```
+
+O Traefik solicita o certificado automaticamente quando DNS, email e desafio ACME estão corretos. Acesse **https://painel.seudominio.com/**. A recriação do Traefik interrompe brevemente os acessos que passam pelo proxy; programe essa alteração em produção. O exemplo é para domínio público. HTTPS por IP exige configuração própria de certificado; abrir 443 sozinho não o configura.
+
+<a id="bancos-pelo-tunel"></a>
+### Bancos e phpMyAdmin por SSH
+
+Execute cada comando no seu computador e mantenha-o aberto. As portas remotas abaixo são os padrões; confira as portas configuradas na sua VPS:
+
+```bash
+# MariaDB: cliente SQL em host 127.0.0.1, porta 13306
+ssh -N -o ExitOnForwardFailure=yes -p 22 -L 13306:127.0.0.1:3306 usuario@IP_DA_VPS
+
+# PostgreSQL: cliente SQL em host 127.0.0.1, porta 15432
+ssh -N -o ExitOnForwardFailure=yes -p 22 -L 15432:127.0.0.1:5432 usuario@IP_DA_VPS
+
+# phpMyAdmin: navegador em http://127.0.0.1:18081/
+ssh -N -o ExitOnForwardFailure=yes -p 22 -L 18081:127.0.0.1:8081 usuario@IP_DA_VPS
+```
+
+Use as credenciais do banco no cliente SQL ou no phpMyAdmin, não a senha SSH. Os serviços precisam estar habilitados e em execução. Para acesso direto às portas dos bancos, configure a publicação individual em **Proxy & acessos**, aplique e libere a porta no firewall. As portas internas dos containers não são necessariamente as portas publicadas no host.
+
+<a id="diagnosticar-acesso"></a>
+### Se não abrir
+
+Execute na VPS:
+
+```bash
+docker compose ps panel traefik mariadb postgres phpmyadmin
+docker compose port panel 3000
+docker compose logs --tail=100 panel
+```
+
+- **Connection refused:** serviço parado, endereço ou porta incorreta. Confira a publicação real no Docker.
+- **Timeout:** confira IP, firewall do host e firewall do provedor.
+- **Address already in use:** a porta local do túnel está ocupada; escolha outra.
+- **Login por HTTP com cookie seguro:** use HTTPS ou o modo privado por túnel descrito acima.
+- **Origem inválida:** confira a URL usada e a configuração de origem/proxy do painel; trocar a senha não corrige esse erro.
+
+[Voltar ao primeiro acesso](#primeiro-acesso-vps).
+
+### Dock de atalhos no rodapé
+
+O painel oferece um dock somente com ícones, com nomes em tooltips ao passar o mouse ou focar pelo teclado, inspirado em desktops macOS/Ubuntu, com atalhos padrão para Central de aplicativos, Serviços, Aplicações, Bancos de dados e Containers & tráfego. Os atalhos só navegam entre páginas; não iniciam ou interrompem serviços.
+
+Personalize em **Administração → Dock**, na opção **Personalizar dock** do perfil ou na engrenagem do rodapé. É possível adicionar/remover páginas, reordenar usando as setas, escolher ícones normais ou compactos, restaurar o padrão e desativar o dock. Mesmo desativado, a configuração continua acessível pelo perfil. Em telas pequenas, a faixa de atalhos tem rolagem horizontal; a engrenagem permanece disponível.
+
+A escolha é salva em `localStorage`, separada por nome de usuário neste navegador, e sincroniza entre abas. Não é uma configuração global do `.env` nem acompanha automaticamente outro computador. Se o armazenamento estiver indisponível, a personalização funciona apenas na sessão atual. Contas restritas recebem somente as páginas permitidas; restaurar preferências não concede permissões. A opção de restauração pede confirmação; as demais escolhas de aparência e atalhos são aplicadas imediatamente.
+
+### Certificados TLS no painel
+
+Em **Workspace → Certificados**, consulte os certificados do armazenamento ACME: domínio/IP, emissor, início/fim da validade, tempo restante, fingerprint SHA-256 e resolver. Os alertas usam os dados X.509 reais: expirado, ainda não válido ou próximo de expirar. O alerta de proximidade considera o menor valor entre 30 dias e um terço da validade do certificado, para também atender certificados curtos; esse alerta não altera o agendamento do Traefik.
+
+A página identifica resolvers no ambiente do container Traefik e distingue configuração encontrada de processo em execução. Não é garantia de que a próxima renovação terá sucesso: DNS, desafios ACME, acesso às portas e limites da autoridade precisam estar corretos. Configurações exclusivamente por arquivo/CLI podem não ser identificadas automaticamente. Certificados externos ou padrão do proxy podem não constar no inventário ACME.
+
+**Consultar TLS** conecta ao Traefik pela rede interna com o nome/IP de uma aplicação cadastrada, mostrando o certificado apresentado, correspondência do nome e confiança na cadeia pelo verificador do painel. Não consulta destinos arbitrários nem comprova acessibilidade externa, DNS ou firewall. Em ambientes HTTP locais, não possuir certificado é esperado. Rotas HTTPS personalizadas precisam estar configuradas no proxy; a consulta não as cria.
+
+**Reavaliar renovação** exige administrador e confirmação com comando e impacto. Executa somente:
+
+```bash
+docker compose restart --timeout 30 traefik
+```
+
+O reinício provoca breve interrupção do tráfego pelo proxy e permite reavaliar seu ciclo automático ACME. **Não força a emissão fora da janela de renovação, não garante um certificado novo imediatamente e não apaga `acme.json`.** O registro de última solicitação indica reinício/reavaliação, não comprovação de renovação. Atualize a lista, consulte TLS e verifique os logs para confirmar um novo prazo. A emissão continua sujeita à autoridade e a seus limites. Não exclua o armazenamento ACME para tentar renovar.
+
+O comportamento de renovação e o parâmetro `certificatesDuration` estão descritos na [documentação oficial do Traefik](https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/). A duração configurada orienta a renovação; a validade efetiva depende da autoridade certificadora.
+
+O Compose monta `traefik_acme` no painel em `/opt/panel-acme`, somente leitura; `PANEL_ACME_STORAGE` aponta internamente para `/opt/panel-acme/acme.json`. A API envia apenas metadados públicos, nunca contas, chaves privadas, PEM ou o JSON ACME completo. O painel não grava nesse volume. Armazenamento ausente, inválido ou sem acesso é indicado na interface. Um certificado em arquivo não comprova que ele esteja sendo servido.
+
+Para aplicar a nova leitura do volume, recrie **somente o painel**:
+
+```bash
+docker compose up -d --build --no-deps panel
+```
+
+Recarregue o navegador. Essa atualização não renova certificados nem reinicia o Traefik. A API administrativa é `GET /api/certificates`, `POST /api/certificates/inspect` com o `id` da aplicação/painel listado e `POST /api/certificates/recheck`; operações POST exigem CSRF. Contas restritas e chaves MCP não têm acesso a essa área.
+
+### Cartões, gráficos e movimento da interface
+
+O dock usa uma faixa baixa, com ícones sem nomes e tooltips; o modo Compacto reduz mais a altura. Cartões de indicadores recebem cores discretas e exibem um indicador animado dentro do cartão enquanto aguardam a primeira amostra. Leituras indisponíveis continuam distintas de leituras em coleta.
+
+Em **Containers & tráfego**, cada gráfico possui o botão **Expandir gráfico**: abre uma modal maximizada com o mesmo histórico e atualizações. Os controles do cabeçalho permitem restaurar, expandir novamente ou fechar, sem reiniciar a coleta. A expansão/restauração de todas as modais tem transição de aproximadamente 460 ms; a preferência **Reduzir movimento** desativa essa animação e as animações dos indicadores. O cabeçalho permanece separado da área rolável.
+
+O sidebar mantém grupos e ícones coloridos, com fundo mais escuro nos dois temas para destacar a navegação. Essas alterações são visuais e não modificam configurações da infraestrutura.
+
+### Imagens e versões do PHP/FrankenPHP e Node no painel
+
+Use **Servidor PHP → Versão e imagem PHP** ou **Servidor Node → Versão e imagem Node**. As telas distinguem a referência configurada no `.env` da versão efetivamente consultada em containers de aplicações em execução. A consulta usa comandos fixos (`php -r 'echo PHP_VERSION;'` ou `node --version`), não executa scripts do projeto, limita a 20 containers por consulta e tem timeout. No caso do Node, a versão do processo do painel também aparece separadamente.
+
+Em **Editar imagem / versão**, informe a referência completa, por exemplo `dunglas/frankenphp:1-php8.4.27-bookworm@sha256:<digest>` ou `node:24-bookworm-slim@sha256:<digest>`. Os exemplos indicam o formato, não uma recomendação de atualização. Para consultar o digest, informe a tag desejada e use **Consultar digest da versão digitada**. A consulta restringe-se aos repositórios oficiais previstos; PHP usa a variante Debian bookworm porque os instaladores da infraestrutura dependem dela.
+
+Salvar altera as variáveis de versão e o lock em `config/runtime-images.lock.json`, com backup anterior em `.panel-state/env-before-runtime-version`. **Aplicar versão salva** é uma etapa separada, com confirmação dos comandos e impactos; PHP exige rebuild, e aplicações/processos afetados podem ser interrompidos. Os volumes são preservados. A existência da imagem/digest não comprova suporte de segurança nem compatibilidade de extensões, aplicação ou arquitetura. A atualização de Node das aplicações não troca o Node do painel nem reinstala dependências automaticamente.
+
+### Listagem do .env da infraestrutura
+
+Em **Administração → Variáveis da infraestrutura**, consulte as declarações do `.env`, com busca por nome/valor visível, filtro por grupo, linha e indicação de nomes duplicados. A tela é **somente leitura**: edite/aplique portas, versões, PHP, backups e demais parâmetros nas áreas específicas ou pelo terminal, seguindo suas instruções.
+
+Senhas, chaves, tokens e outras variáveis identificadas como sensíveis não são enviados pela listagem. Para consultar uma delas, abra os detalhes e escolha **Exibir valor protegido**; confirme o acesso. Somente o valor solicitado é carregado. A consulta registra nome/linha e usuário na auditoria, sem registrar o valor. O valor é ocultado novamente após 60 segundos, ao fechar a janela ou sair da página, e não é salvo nas preferências do navegador. Os filtros não pesquisam dentro de valores protegidos.
+
+São valores declarados no arquivo, sem expandir `${...}`, interpretar escapes ou resolver precedência do Compose/ambiente do container. Aspas não finalizadas são indicadas como declaração inválida. O reconhecimento de dados sensíveis é conservador por nome e formatos conhecidos; revise nomes de variáveis personalizados para não cadastrar segredos como parâmetros públicos. Nunca compartilhe capturas contendo valores exibidos.
+
+A API é `GET /api/infra-env` e `POST /api/infra-env/reveal` com `id` e `revision` da listagem. Exige administrador, sessão e CSRF para revelar; não está disponível para contas restritas nem chaves MCP. Nenhum endpoint desta área permite gravar ou executar conteúdo do `.env`.
+
+<a id="sec-websocket-por-aplicacao"></a>
+
+## WebSocket por aplicação
+
+No painel, abra **Processos → WebSocket**. Cada aplicação tem os botões **Como configurar**, **Configurar**, **Logs**, **Iniciar**, **Reiniciar** e **Parar**. O recurso vem desativado. [Voltar ao início](#).
+
+1. Prepare o projeto no terminal da aplicação. Para Laravel, execute `composer require laravel/reverb` e `php artisan reverb:install`. Revise os arquivos criados pelo instalador. Reverb é gratuito, open source e não exige Octane. Sua versão é controlada pelo `composer.lock` do projeto.
+2. Configure `REVERB_APP_ID`, `REVERB_APP_KEY` e `REVERB_APP_SECRET` no **.env da aplicação**. Defina `BROADCAST_CONNECTION=reverb`, `REVERB_HOST`, `REVERB_PORT` e `REVERB_SCHEME` com o endereço público do proxy. O botão **Como configurar** mostra um exemplo completo. Nunca exponha `REVERB_APP_SECRET` no frontend.
+3. Configure as variáveis `VITE_REVERB_*` do Laravel Echo com esse mesmo endereço público e reconstrua o frontend. Limpe configurações antigas com `php artisan config:clear`. Broadcasting enfileirado exige um worker em **Processos → Filas**.
+4. No painel, escolha **Configurar**, ative o servidor e selecione **Laravel Reverb** ou **Servidor Node.js**. Clique em **Salvar e aplicar** e revise os comandos na confirmação.
+5. Confira o estado e os logs. A aplicação precisa implementar os eventos, canais e autorização de canais privados. A infraestrutura não cria essa lógica.
+
+**Endereço:** “Mesmo domínio” funciona inclusive com IP cadastrado na aplicação. O Traefik encaminha `/app/` (conexão) e `/apps/` (publicação) ao Reverb sem remover o caminho. Para Node, informe o caminho do servidor, por exemplo `/socket.io/`. Esses caminhos ficam reservados ao WebSocket. “Subdomínio exclusivo” exige DNS apontando para a VPS. O cliente Node deve usar o protocolo do servidor: Socket.IO e WebSocket nativo não são intercambiáveis.
+
+**HTTPS:** habilite HTTPS em **Proxy & acessos** antes de selecionar WSS. Use a porta pública HTTPS (normalmente 443) e `REVERB_SCHEME=https`. Em HTTP local, use a porta HTTP configurada (por exemplo 8080) e `http`. Não abra a porta interna WebSocket no firewall: o acesso usa as portas públicas existentes do Traefik. Páginas HTTPS precisam conectar usando WSS.
+
+**Node:** prepare as dependências e um script `websocket` no `package.json`; o comando padrão é `npm run websocket`. O servidor deve ouvir em `0.0.0.0` e usar `process.env.PORT`. `WEBSOCKET_ALLOWED_ORIGINS` é uma lista JSON de hosts que **seu código Node deve validar**. O painel não impõe essa validação ao Node. No Reverb, o launcher impõe as origens em memória; exige o provedor `config` padrão de `config/reverb.php`. Informe hosts sem protocolo, porta ou curinga.
+
+**Aplicação das mudanças:** a ação desta tela recria somente `websocket-<id>`, com `--no-deps`, preservando os containers HTTP, bancos e volumes. Alterar a versão compartilhada PHP/Node também recria os WebSockets desse runtime. Cada servidor usa as imagens fixadas da infraestrutura e `restart: unless-stopped`. Reinícios desconectam clientes; implemente reconexão. O painel verifica pré-requisitos do Reverb, mas não instala pacotes nem modifica o .env da aplicação. Se a inicialização falhar, a configuração fica salva e pode ser corrigida e reaplicada. Faça alterações no painel com uma conta administradora; as operações possuem auditoria.
+
+Para configurar por arquivo, veja `APP_WEBSOCKET_*` no [.env.example](.env.example). Aplicações adicionais usam `APP_2_WEBSOCKET_*` etc. Após mudanças manuais, importe os apontamentos pelo fluxo de configuração ou ajuste a tela e aplique; não basta editar `.env` de um container em execução. O painel mantém o cadastro em `config/apps.json` e gera `config/apps.compose.yaml` e rotas individuais em `docker/traefik/websocket-<id>.json`.
+
+<a id="sec-saude-interna-para-as-aplicacoes"></a>
+
+## Saúde interna para as aplicações
+
+A aplicação pode consultar a infraestrutura pelo endpoint **somente de leitura**:
+
+```text
+GET http://panel:3001/v1/health
+```
+
+Execute a chamada no backend, dentro do container principal de uma aplicação habilitada. A porta 3001 **não é publicada no host** e não tem rota no Traefik. Não é necessário liberar porta no firewall. O acesso não usa a senha do painel nem a chave MCP: o painel verifica o endereço real da conexão contra os IPs da rede `app`, o projeto Compose, o serviço cadastrado e o estado em execução do container no Docker. Cabeçalhos `X-Forwarded-For` não concedem acesso. Containers de workers, proxy, bancos ou outros projetos não são autorizados. Administradores com controle do host/Docker continuam tendo controle dessa fronteira de rede.
+
+Laravel, no código do backend:
+
+```php
+$health = Http::timeout(25)
+    ->get('http://panel:3001/v1/health')
+    ->throw()
+    ->json();
+```
+
+Importe `Illuminate\Support\Facades\Http`. Node.js:
+
+```js
+const response = await fetch('http://panel:3001/v1/health', {
+  signal: AbortSignal.timeout(25000),
+});
+if (!response.ok) throw new Error(`Infra indisponível: HTTP ${response.status}`);
+const health = await response.json();
+```
+
+A resposta contém `schemaVersion`, `observedAt`, a identificação da aplicação, `services`, `queues`, `jobs`, `scheduler` e `websocket`. `queues.registeredWorkers` conta consumidores cadastrados; `distinctQueues` conta pares conexão/fila; `runningWorkers` mostra consumidores em execução. `queues.statistics` contém contagens disponíveis de jobs total/pendentes/reservados/atrasados das filas cadastradas. Estatísticas Laravel indisponíveis são sinalizadas por `statisticsStatus=unavailable` e `statistics=null`; Node não possui ponte de filas genérica e retorna `not_applicable`. Ausência de dados não significa fila vazia. `jobs.registered` é cadastro de classes, não quantidade de jobs executados.
+
+O estado agregado pode ser `operational`, `degraded` ou `unknown`. Healthchecks Docker não comprovam o funcionamento de um endpoint ou a conclusão de jobs. Serviços desativados não tornam a infraestrutura degradada. O status HTTP 200 significa que a consulta funcionou; leia o campo `status` para avaliar os serviços. Erros de coleta retornam 503, origem não autorizada retorna 403 e excesso de consultas retorna 429. Há limite de 30 consultas/minuto por endereço e cache de até 10 segundos por aplicação. Não consulte a infraestrutura a cada requisição do usuário; utilize uma rotina periódica e trate indisponibilidade sem interromper o fluxo principal da aplicação.
+
+O endpoint não entrega .env, senhas, argumentos de jobs, caminhos do host ou logs e não permite mutações. O painel mostra o endereço também em **Como acessar**. Para disponibilizar essa funcionalidade após atualizar o código, reconstrua somente o painel:
+
+```bash
+docker compose up -d --build --no-deps panel
+```
+
+Não publique nem encaminhe a porta 3001 em outros proxies. A configuração padrão a mantém interna às redes Docker; a autorização identifica exclusivamente os IPs das aplicações na rede app.
+
+<a id="sec-seguranca-por-aplicacao"></a>
+
+## Segurança por aplicação
+
+Em **Administração → Segurança**, as abas horizontais separam visão geral, IPs/redes, regras, recursos e eventos. O módulo usa Docker e Traefik existentes, sem novas imagens ou serviços comerciais. Nenhuma política vem ativada por padrão.
+
+### IPs, redes e horários
+
+1. Em **IPs e redes**, crie um grupo com nome e identificador, por exemplo `empresa`. Informe IPv4/IPv6 ou redes CIDR, uma por linha. IPv4 mapeado em IPv6 deve ser informado no formato IPv4 normal.
+2. Em **Regras de acesso**, abra a aplicação. Escolha o comportamento quando nenhuma regra corresponder: Permitir ou Negar.
+3. Adicione regras de Permitir/Negar com IPs/redes ou grupos. Opcionalmente marque dias, início, fim e fuso (padrão America/Sao_Paulo).
+4. Para acesso exclusivo da empresa durante expediente, escolha **padrão Negar**, uma regra **Permitir**, grupo Empresa, segunda a sexta, 08:00–18:00. Fora desse período, o acesso será negado. Uma regra Negar correspondente sempre prevalece sobre permissões.
+5. Use **Simular acesso** com IP e data ISO com fuso para conferir o rascunho. Ative a proteção e use **Salvar e aplicar**, revisando a confirmação.
+
+O horário final é exclusivo. Períodos que cruzam meia-noite pertencem ao dia de início: sexta 22:00–02:00 também permite sábado até 01:59. Dias/fusos são calculados pelo relógio do servidor usando o fuso da regra, inclusive horário de verão do banco IANA. Regras sem horário valem sempre dentro da validade opcional. Início e expiração usam datas ISO com fuso; a expiração é exclusiva e apenas deixa de corresponder à regra, sem mudar o padrão da aplicação. Há limite de 200 entradas efetivas de IP/rede por regra, incluindo os grupos referenciados. Grupos em uso não podem ser removidos; editar um grupo altera as regras que o utilizam. Não há resolução de hostname em regras de IP.
+
+### Alcance e operação
+
+O Traefik aplica as cadeias `app-security-<id>` às rotas gerenciadas HTTP, HTTPS e WebSocket. Com proteção desativada, a cadeia fica vazia. Com proteção ativa, aplica limites HTTP configurados e consulta o autorizador interno `http://panel:3002/check?app=<id>`. **Não publique a porta 3002.** O autorizador aceita somente conexões do container Traefik em execução deste projeto, conferidas via Docker; não usa IP de cliente enviado diretamente ao painel. O ForwardAuth usa `trustForwardHeader=false` e o IP recebido do Traefik deve ser um endereço único válido. Cabeçalhos externos não autenticam chamadas ao autorizador.
+
+A configuração inicial pressupõe conexão direta do cliente ao Traefik. CDNs, balanceadores ou outros proxies exigem revisão da cadeia de proxies confiáveis e testes antes de usar políticas de IP; IP compartilhado/NAT pode representar vários usuários. O módulo não configura automaticamente confiança em cabeçalhos desses serviços.
+
+As regras abrangem **novas requisições HTTP e novos handshakes WebSocket**. Não encerram conexões já abertas ao terminar o horário. Não alteram firewall, SSH, portas de banco ou portas diretas dos containers. Rotas personalizadas externas ao gerador precisam receber explicitamente a cadeia da aplicação. O acesso administrativo ao painel não recebe políticas de aplicação, permitindo corrigir bloqueios equivocados.
+
+Quando uma política está ativa, a indisponibilidade do painel/autorizador ou configuração inválida **nega novos acessos** à aplicação protegida. Planeje atualizações do painel considerando essa dependência. A revalidação de IPs do container Traefik usa cache de até 5 segundos; configurações de política podem usar cache de até 1 segundo. `security.json` é atualizado por arquivo e recarregado pelo Traefik; não reinicia containers. A interface confirma o salvamento, mas não comprova que um cliente externo recebeu o resultado esperado: teste a partir das redes permitidas e negadas.
+
+O botão **Restaurar política anterior** reaplica o backup imediatamente anterior com confirmação. Ele não restaura quotas de CPU/PIDs. O estado privado fica em `.panel-state/security.json` e o arquivo gerado de middlewares em `docker/traefik/security.yml`. Auditoria das alterações usa a auditoria persistente dos usuários do painel. Credenciais MCP não recebem permissão para administrar segurança.
+
+### Limites de tráfego e recursos
+
+- Requisições por segundo e burst usam RateLimit do Traefik por IP, por instância. Zero desativa o limite.
+- Requisições simultâneas usam InFlightReq por IP; não são uma contagem universal de sockets. WebSockets persistentes podem consumir esse limite. Zero desativa.
+- CPU por aplicação usa quota Docker em núcleos (ex.: 0.5), não reserva CPUs. Zero remove a quota.
+- PIDs limita processos/threads do container. `-1` remove o limite; valores limitados aceitam de 16 a 1048576. Reduzir pode impedir a aplicação de criar processos.
+- RAM usa o controle existente por serviço. Reduções podem encerrar processos por OOM; memória por container é diferente de `memory_limit` do PHP.
+
+CPU/PIDs alteram somente o container HTTP da aplicação identificada por labels do projeto e serviço, usando `docker update`. Valores persistem no .env (`CONTAINER_CPUS_<SERVICO>` e `CONTAINER_PIDS_<SERVICO>`) e no Compose gerado para futuras recriações. Workers e WebSockets têm execução independente. Se o container ainda não existir, apenas persistem os limites. Os valores mostrados nessa tabela são os configurados; falha parcial pode exigir conferir os limites reais no Docker. A configuração anterior do .env é guardada em `.panel-state/env-before-security-quotas`.
+
+### Observação de tráfego
+
+A visão geral mostra origens e contadores observados pelo autorizador na janela de até 60 segundos, somente para aplicações com proteção ativa. Limitadores podem rejeitar requisições antes do autorizador, portanto os contadores não abrangem todo o tráfego nem todos os 429. Eventos mostram até 500 negativas em memória e são apagados ao reiniciar o painel. IPs são dados potencialmente pessoais; restrinja a consulta aos administradores. Não são armazenados corpos, query strings nem credenciais nessa coleta.
+
+Picos de acesso são **indícios**, não confirmação de DDoS. Esta camada não protege contra saturação da rede da VPS; essa mitigação pertence ao provedor ou à proteção anterior ao host.
+
+Após atualizar o código, reconstrua somente o painel para iniciar o autorizador. As rotas estáticas já presentes no repositório e novos arquivos dinâmicos são observados pelo Traefik. O painel também adiciona a cadeia às rotas geradas de WebSockets e aplicações adicionais existentes, preservando seus destinos e demais middlewares. Nenhum firewall é alterado automaticamente.
+
+### Bloqueio temporário do login
+
+Por padrão, **3 tentativas incorretas** dentro de 15 minutos bloqueiam novas tentativas do mesmo IP por **60 segundos**. O formulário mostra uma animação e a contagem regressiva, desabilita os campos e volta a permitir o login após o prazo. Recarregar a página ou reiniciar o painel não remove o bloqueio, que fica registrado em `.panel-state/login-attempts.json`.
+
+Em **Administração → Segurança → Login do painel**, o administrador pode alterar os limites. Também é possível defini-los no `.env` da infraestrutura:
+
+```dotenv
+PANEL_LOGIN_MAX_ATTEMPTS=3
+PANEL_LOGIN_BLOCK_SECONDS=60
+```
+
+São aceitas de 1 a 20 tentativas e durações de 10 a 86400 segundos. As mudanças são lidas sem reconstruir o painel; bloqueios em andamento mantêm o prazo original. Um login válido ou o término do bloqueio reinicia a contagem. Sessões abertas continuam funcionando. O bloqueio é por origem, portanto usuários da mesma rede/NAT podem compartilhá-lo; ele não desliga o painel para todos. Cabeçalhos de IP encaminhados só são considerados quando enviados pelo Traefik reconhecido da própria infraestrutura.
+
+A API responde com HTTP `429` e `Retry-After` enquanto a origem estiver bloqueada. Essa proteção limita tentativas de senha e não substitui proteção contra DDoS.
+
+### Trocar a senha administrativa pelo painel
+
+Entre com a conta `PANEL_USERNAME` e abra **Administração → Segurança → Login do painel → Alterar senha do painel**. Informe a senha atual, a nova senha e sua confirmação. O formulário indica se os requisitos de força foram atendidos e oferece **Gerar senha forte**, que cria 24 caracteres aleatórios no navegador. Guarde a senha gerada antes de confirmar.
+
+A nova senha deve ter entre 16 e 128 caracteres e pelo menos três tipos entre letras minúsculas, maiúsculas, números e símbolos. Sequências comuns e caracteres que podem interferir no `.env`/Compose são recusados. As mesmas regras são verificadas pela API. Erros de senha atual também contam para o bloqueio temporário de login.
+
+A troca grava somente `PANEL_PASSWORD` no `.env`, com permissão de arquivo restrita, e passa a valer imediatamente, inclusive após reiniciar o painel. Todas as sessões dessa conta são encerradas; entre novamente com a nova senha. Não exige reconstrução e não reinicia aplicações. Outras contas administrativas não podem trocar a senha da conta protegida por esse formulário. As senhas não são incluídas no registro de auditoria da troca.
+
+### Identidade visual
+
+A logo oficial fica em `icon.svg`, na raiz. Ela é usada no login, na identificação do painel, no favicon e nas páginas de erro HTTP. Após substituir esse arquivo, execute `node scripts/sync-brand.mjs` para atualizar a cópia pública e as imagens incorporadas às páginas de erro. Inclua os arquivos atualizados no deploy. As páginas de erro carregam a logo sem depender da aplicação estar disponível.
+
+### Compatibilidade do nome anterior
+
+O projeto passou a se chamar **Jubart**. As chaves internas `infra-control-theme`, `infra-control-dock` e os labels Docker `io.infra-control.*` permanecem para preservar preferências e a identificação de containers de instalações existentes. Não é necessário renomear o diretório de instalação, o projeto Compose, volumes, cookies ou variáveis do `.env`. Os endpoints e nomes de ferramentas da API permanecem compatíveis. A skill atual está em `.github/skills/jubart-mcp`; atualize o caminho caso tenha instalado uma cópia manual da skill anterior.
+
+### IA: panorama da configuração e criação de .env
+
+Na tela **Conexão MCP**, o endpoint de configuração (`GET /api/ai/read?resource=configuration`, ou `infra_read` com `resource: configuration`) entrega valores atuais permitidos e o modelo público `.env.example`. A Skill `jubart-mcp` orienta o agente a entender essa visão parcial e criar um arquivo no workspace autorizado do cliente: `.env` para uma instalação nova ou `.env.proposed`/patch para uma existente, preservando credenciais e dados. Senhas reais não são exportadas; o modelo usa marcadores para geração local. A API não grava nem aplica o arquivo e a criação depende de uma ferramenta local de arquivos do agente. A consulta exige chave com leitura e respeita o escopo de aplicações.
+
+### Páginas de erro do proxy Traefik
+
+O serviço interno `error-pages` serve as páginas com a marca Jubart, independentemente do PHP e do painel. Usa a imagem Node já fixada por `NODE_VERSION`, arquivos somente para leitura, usuário sem privilégios e nenhuma porta publicada no host.
+
+- Sem rota para o domínio, o fallback de baixa prioridade responde **404**. Navegação HTML recebe a página Jubart; clientes sem Accept HTML continuam recebendo um 404 em texto.
+- Nas aplicações, navegações GET/HEAD com `Accept: text/html` usam as páginas **404, 500, 502, 503 e 504**, preservando o código HTTP. Requisições Inertia, Upgrade/WebSocket e métodos de escrita não usam esse middleware. As rotas WebSocket mantêm prioridade superior.
+- APIs que solicitam JSON permanecem com suas respostas originais. Um endpoint que solicitar explicitamente HTML poderá receber a página personalizada.
+- As rotas administrativas do painel e as permissões de segurança permanecem independentes. O serviço de páginas registra somente referência, horário UTC e status da página entregue, com rotação de logs; não registra URL, cookies ou tokens. Pelo middleware, somente o header Accept é encaminhado.
+
+As definições ficam em `docker/traefik/errors.yml`, `routes.yml` e `apps.yml`; aplicações adicionais recebem rotas equivalentes pelo gerador do painel. Reiniciar o painel atualizado também adapta o arquivo `extra-apps.yml` existente, quando presente.
+
+Em uma instalação existente, após atualizar os arquivos, inicie apenas o novo serviço:
+
+```bash
+docker compose up -d --no-deps error-pages
+```
+
+O Traefik acompanha os arquivos dinâmicos montados e os recarrega. Para aplicações adicionais já cadastradas, atualize/reinicie somente o painel pelo procedimento usual para executar a adaptação do arquivo gerado. Não é necessário parar bancos ou remover volumes. Confirme os logs do proxy e teste as rotas em ambiente local antes de levar à produção.
+
+Exemplos de verificação (ajuste a porta ao `.env`):
+
+```bash
+# Domínio sem rota: página Jubart e HTTP 404
+curl -i -H 'Host: sem-rota.invalid' -H 'Accept: text/html' http://127.0.0.1/
+
+# Cliente sem solicitação de HTML: HTTP 404 em texto
+curl -i -H 'Host: sem-rota.invalid' http://127.0.0.1/
+```
+
+As páginas dependem de `error-pages` e do Traefik estarem acessíveis. Conexão recusada, falha de DNS ou erro de certificado antes do HTTP continuam sendo apresentados pelo navegador. O fallback HTTPS usa o certificado disponível no proxy: não emite certificados para domínios desconhecidos. Alterar `PHP_DISPLAY_ERRORS` não desativa a personalização de erros de navegação no proxy.
+
+As páginas de erro oferecem **Ver diagnóstico técnico**, com descrição do status e orientações para consultar Serviços → Logs. Quando entregues por `error-pages`, exibem UUID e horário UTC correspondentes ao evento `error.page.served` nos logs desse serviço. Essa referência identifica a entrega da página, não é um ID de rastreamento da requisição original no Traefik; correlacione horário e logs do proxy/aplicação para investigar a causa. Páginas estáticas do FrankenPHP indicam quando essa referência não está disponível. Logs completos continuam restritos ao acesso administrativo.
+
+### Padrão localhost e primeira inicialização
+
+O `.env.example` usa `APP_DOMAIN=localhost`, `HTTP_PORT=80`, `APP_URL=http://localhost`, TLS desativado e acessos restritos a `127.0.0.1`. O painel usa 9090 e o phpMyAdmin 8081. As aplicações adicionais usam `app2.localhost` e `app3.localhost`, inicialmente desativadas. Se a porta 80 estiver ocupada, altere HTTP_PORT e todas as URLs públicas correspondentes. Os caminhos absolutos do workspace e dos projetos precisam ser preenchidos conforme o computador; credenciais do modelo devem ser substituídas.
+
+O Traefik inicia o serviço de páginas como dependência. Configurações dinâmicas geradas usam extensão `.yml`, inclusive segurança, aplicações adicionais e WebSockets. Instalações anteriores são migradas pelo painel atualizado. A ausência de políticas de segurança usa um middleware válido, sem cadeia vazia. Essas correções não dependem de variáveis adicionais no `.env`; não sobrescreva seu ambiente existente com o modelo.
+
+O editor do `.env` da aplicação oferece números de linha, cores para variáveis/valores/comentários, busca com próxima/anterior ocorrência e Ctrl/⌘+F. Ao maximizar a janela, a área de código ocupa o espaço disponível e mantém os botões de ação visíveis. O componente CodeMirror é empacotado localmente; o conteúdo não é enviado a serviços externos de edição.
+
+<a id="limites-phpmyadmin"></a>
+
+<a id="sec-limites-de-importacao-e-exportacao-do-phpmyadmin"></a>
+
+## Limites de importação e exportação do phpMyAdmin
+
+Em **Dados → Bancos de dados → MariaDB → Limites do phpMyAdmin**, configure o tamanho máximo do arquivo enviado, a memória PHP e o tempo por operação. Os valores são persistidos no `.env` e **Salvar e aplicar** recria somente o phpMyAdmin, com backup da configuração anterior; não reinicia o banco nem as aplicações.
+
+```dotenv
+PHPMYADMIN_UPLOAD_LIMIT=128M
+PHPMYADMIN_MEMORY_LIMIT=512M
+PHPMYADMIN_MAX_EXECUTION_TIME=600
+```
+
+Esses são os padrões do modelo para instalações novas. Um `.env` existente com `PHPMYADMIN_UPLOAD_LIMIT=32M` continua limitado a 32 MiB até ser alterado e aplicado. Para um dump maior que 50 MiB, escolha 128 MiB ou um limite com margem acima do tamanho real do arquivo. Arquivos compactados podem consumir mais memória ao serem descompactados.
+
+Downloads/exportações não possuem um teto fixo de tamanho no phpMyAdmin: o limite de upload não limita o arquivo baixado. Memória, tempo por operação, recursos do servidor e navegador condicionam a exportação. O formulário explica essa diferença e não oferece um limite de download inexistente.
+
+Antes de aplicar, confirme que nenhuma importação/exportação está em andamento. Recriar o phpMyAdmin interrompe os acessos e pode interromper transferências. Erro ao consultar progresso não comprova que a importação foi revertida; verifique o estado do banco antes de reenviar o dump.
+
+Se alterar o `.env` manualmente, aplique apenas esse serviço:
+
+```bash
+docker compose up -d --no-deps --no-build --force-recreate phpmyadmin
+```
+
+Para usar a nova tela e API, atualize/reconstrua o painel com este código. A compilação do frontend isoladamente não atualiza o servidor dentro de um container já criado.
+
+<a id="paineis-vinculados"></a>
+
+<a id="sec-paineis-jubart-vinculados-e-entrada-automatica"></a>
+
+## Painéis Jubart vinculados e entrada automática
+
+Em **Integrações → Painéis vinculados**, as abas **Atalhos**, **Compartilhamentos** e **Como funciona** centralizam o acesso a outras instalações.
+
+1. **No painel que será acessado**, escolha a conta administradora principal ou cadastre outra conta em Usuários e permissões. O administrador principal também pode ser compartilhado, com acesso completo.
+2. Na aba Compartilhamentos, escolha a conta, um nome, a URL acessível desse painel e validade de **1 a 30 dias**. O token é exibido somente na criação; copie-o e envie por canal privado.
+3. **No painel que centraliza os atalhos**, abra Vincular painel e cole o token. Confira o endereço e a validade antes de salvar.
+4. Clique em Abrir painel. Uma nova aba entra automaticamente com a conta concedida, sem digitar ou transportar sua senha.
+
+O token contém endereço, nome, validade e uma credencial revogável própria. Ele é uma **credencial de acesso**, não uma senha criptografada nem uma simples configuração inofensiva. Quem o possui pode utilizar as permissões concedidas até revogação/expiração. Se escolher uma conta administrativa, estará concedendo acesso administrativo completo. A URL deve usar HTTPS fora de localhost/loopback. O token de compartilhamento não é cifrado no transporte por si só; não o publique em Git, logs ou mensagens públicas.
+
+O painel que emite guarda somente o hash do segredo. O painel que recebe guarda a credencial cifrada com AES-256-GCM, sob `.panel-state/panel-links`, usando uma chave local de arquivo restrito. Preserve essa pasta e sua chave nos backups protegidos. A listagem e a auditoria não devolvem tokens/senhas. A gestão e a utilização dos atalhos são exclusivas de administradores do painel que os armazena.
+
+Ao abrir um atalho, o servidor de origem contata somente o endpoint fixo de troca no endereço salvo, sem seguir redirecionamentos. O destino emite um ticket de **uso único**, válido por **30 segundos**. O navegador recebe esse ticket no fragmento da URL (não no query string), remove-o e troca por uma sessão HttpOnly no destino. As permissões são sempre as da conta escolhida; o token não amplia o perfil nem concede acesso pelo MCP.
+
+Revogar um compartilhamento no painel emissor impede novas entradas e invalida sessões abertas por ele. Alterar senha/permissões ou desativar a conta também invalida o vínculo. Sessões duram até oito horas, limitadas pela validade do compartilhamento. **Remover um atalho não revoga a credencial no emissor**; revogue-a no painel que concedeu o acesso quando necessário. Após revogar ou alterar a conta, gere um novo token e substitua o vínculo.
+
+Os dois painéis precisam executar uma versão que contenha este recurso. O endereço do destino precisa ser alcançável pelo servidor que armazena o atalho e pelo navegador que o abrirá. `localhost` em containers diferentes normalmente aponta para ambientes diferentes; use um endereço HTTPS comum acessível a ambos. A funcionalidade não abre firewall, configura DNS, cria túneis ou altera serviços automaticamente. Tokens vencidos e falhas de conexão são informados ao abrir o atalho.
+
+<a id="configuracoes-servidor"></a>
+
+<a id="sec-data-hora-e-regiao-do-servidor"></a>
+
+## Data, hora e região do servidor
+
+Em **Administração → Configurações do servidor**, consulte a hora do servidor, UTC, região e fuso. O relógio avança a partir da amostra retornada pelo servidor e consulta novamente a cada 30 segundos. Não depende da data configurada no navegador.
+
+**Configurar região e fuso → Salvar e aplicar** persiste `TZ` (ex.: `America/Sao_Paulo`) e `SERVER_DATE_LOCALE` (ex.: `pt-BR`) no `.env`, valida o Compose e recria somente runtimes PHP/FrankenPHP, Node.js, workers, agendadores e WebSockets em execução. Serviços parados permanecem parados. Conexões e tarefas ativas podem ser interrompidas; revise os horários das agendas. Outros serviços e o próprio painel recebem o novo TZ na próxima recriação. O backup protegido do `.env` anterior fica em `.panel-state/server-settings/env-before-settings`.
+
+O PHP usa `date.timezone = ${TZ}`; Node.js recebe `TZ` também nos serviços gerados. Aplicações podem sobrescrever o fuso nas suas configurações (como Laravel). Região controla apenas a apresentação da data nesta área, não o idioma das aplicações nem locales do sistema. Alterar data manualmente ou sincronização NTP deve ser feito no host; o painel não recebe permissão para alterar seu relógio.
+
+O **Console SQL** organiza o trabalho em **Comandos**, **Resultados** e **Erros**. Comandos potencialmente modificadores (como DELETE, UPDATE, DROP, TRUNCATE, INSERT e ALTER) recebem confirmação destacada, com banco, conta e comandos identificados, e exigem marcar a ciência dos impactos antes de executar. UPDATE/DELETE sem WHERE no nível da operação recebem alerta adicional sobre afetar todos os registros. A triagem considera somente o SQL enviado (seleção ou editor), ignora literais/comentários comuns e trata construções desconhecidas de forma conservadora; não é um analisador SQL completo nem substitui permissões do banco. Cancelar não executa o lote. O editor tem realce SQL, numeração de linhas e Ctrl/⌘+Enter para executar a seleção ou todo o conteúdo. O SQL permanece no editor ao alternar abas. Após executar, a aba correspondente abre automaticamente; resultados anteriores ao primeiro erro continuam disponíveis por instrução. A tabela ocupa a altura disponível até o rodapé, com rolagem própria e exportação CSV do resultado selecionado. A interface mantém somente as abas, os controles necessários e um rodapé compacto; os limites e orientações ficam em Ajuda e limites. Os erros exibem a mensagem retornada e o número da instrução quando fornecido pelo lote; não há validação SQL antecipada. Fechar a janela descarta o conteúdo local do editor e os resultados.
+
+
+Na área **Dados → Backups**, as guias **Cópias de segurança**, **Configurações** e **Atividade e estado** separam arquivos, automação e acompanhamento. Um resumo informa se a agenda está ativa, se há execução ao iniciar e qual o destino. Em Configurações → Automação, ative o switch, escolha frequência diária/semanal ou cron personalizado, horário e fuso, e use **Salvar e aplicar**. A guia Arquivos e retenção define pasta, bancos e conservação; Destino remoto configura S3. Os controles mostram um rascunho até salvar. O estado da agenda é a configuração salva, separado da disponibilidade do serviço e das datas do último sucesso/falha.
+
+Novas instalações vêm com **BACKUP_ENABLED=false**, **BACKUP_RUN_ON_START=false**, **PG_BACKUP_ENABLED=false** e **PG_BACKUP_RUN_ON_START=false**. Backups manuais continuam disponíveis. Ativar a agenda não ativa automaticamente cópias ao iniciar: esse switch é independente e só funciona com a automação ativa. Desativar a automação no formulário também desmarca a execução ao iniciar. As cópias já existentes são preservadas.
+
+
+<a id="publicacao-github"></a>
+
+<a id="sec-publicacao-no-github-e-configuracoes-locais"></a>
+
+## Publicação no GitHub e configurações locais
+
+O repositório distribui código, `.env.example`, templates do proxy e catálogos de dependências/imagens. `.env`, `.env.*` (exceto `.env.example`), `.panel-state/`, backups, configurações salvas/geradas de aplicações e automações, integrações e rotas dinâmicas do proxy ficam ignorados pelo Git. Não ignore toda a pasta `config/`: os catálogos públicos `images.lock.json` e `dependencies.licenses.json` continuam versionados.
+
+Após clonar e preparar seu `.env`, execute `node scripts/initialize-local.mjs` **antes do primeiro comando Compose**, pois o modelo usa arquivos locais em `COMPOSE_FILE`. O script requer Node.js 24 ou superior, usa apenas módulos locais/nativos, prepara arquivos ausentes, substitui os caminhos e segredos de exemplo no `.env` e preserva valores personalizados. O painel também prepara os arquivos ausentes ao iniciar. Aplicações são inicializadas a partir do `.env` quando acessadas; os demais cadastros são criados conforme utilizados.
+
+Sem Node no host, o mesmo script pode ser executado em um container Node, montando a raiz do projeto e usando o UID/GID do usuário local. Use a imagem fixada em `NODE_VERSION` no `.env.example` como imagem desse container; não é necessário instalar as dependências npm para executar esse script.
+
+```bash
+JUBART_NODE_IMAGE="$(sed -n 's/^NODE_VERSION=//p' .env.example)"
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/workspace" -w /workspace -e JUBART_HOST_DIRECTORY="$PWD" "node:$JUBART_NODE_IMAGE" node scripts/initialize-local.mjs
+```
+
+
+Antes de publicar, execute `node scripts/check-publication.mjs --history` e revise `git diff --cached`. O verificador detecta caminhos locais conhecidos no índice e no histórico, compara os conteúdos com segredos atuais do `.env` (sem exibir valores) e procura alguns padrões de tokens e chaves privadas. Também examina arquivos publicáveis antes do próximo `git add`. Não detecta todos os segredos nem substitui revisão manual. Sem `--history`, os commits anteriores não são examinados. Arquivos locais anteriormente rastreados precisam sair do índice com `git rm --cached` (sem apagar as cópias do disco); o `.gitignore` sozinho não resolve esse caso. Commits antigos continuam contendo arquivos antes versionados: parar de versionar não limpa o histórico. Se uma credencial tiver sido publicada, revogue-a e trate o histórico antes de tornar o repositório público. Backups da instalação devem preservar separadamente o `.env`, `config/` e `.panel-state/` protegidos.
+
+<a id="migracao-jubart"></a>
+
+<a id="sec-assistente-jubart-json-para-outra-infraestrutura"></a>
+
+## Assistente Jubart.json para outra infraestrutura
+
+O **Assistente de configuração** reúne o fluxo local → nuvem/VPS:
+
+1. Em **Preparar meu ambiente → Configurar aqui**, cadastre acesso, aplicação e banco. Salve na etapa **Revisão**; teste sua aplicação localmente antes de transportá-la.
+2. Escolha **Levar para a nuvem / VPS → Preparar Jubart.json**, ou **Levar para a VPS · Jubart.json** na revisão. O arquivo usa as configurações salvas; o assistente bloqueia a transferência enquanto houver rascunho não salvo.
+3. Selecione as categorias e ajuste o destino. **Preparar para VPS por IP** publica em `0.0.0.0` e escolhe HTTP por porta; **Preparar para localhost** usa `127.0.0.1`. Ambos desativam TLS, cookie seguro e proxy por domínio do painel **no arquivo de destino**, sem mudar a origem. Para preservar HTTPS, escolha **Manter HTTP/HTTPS e proxy do arquivo** e revise DNS/certificados.
+4. Instale e inicie o Jubart na VPS com o início rápido. Transfira o código/build das aplicações e os dumps dos bancos pelos meios apropriados. Entre no painel e abra **Assistente de configuração → Receber neste servidor → Importar e continuar**.
+5. Carregue `Jubart.json`, confirme IP/domínio, portas e pastas reais de cada aplicação e revise os avisos. Importar salva sem iniciar serviços. O assistente continua na etapa de bancos, com a configuração importada carregada: prepare credenciais locais, cadastre/teste conexões, revise todas as aplicações habilitadas e aplique.
+
+O arquivo não copia dados nem credenciais de bancos. As contas, senhas e conexões devem ser preparadas no destino. A liberação das portas no firewall é manual; alterar a porta/cookie do próprio painel exige recriá-lo no terminal conforme o início rápido. A exportação mantém sua instalação local intacta.
+
+Em **Administração → Importar e exportar configurações**, use os assistentes de exportação e importação. O arquivo se chama **Jubart.json** (`format: "Jubart"`, `version: 1`), tem limite de 750 KiB e contém categorias escolhidas: aplicações/acessos, cadastros de filas/agendadores/jobs e preferências de fuso/versões/backups. A exportação não altera a instalação de origem.
+
+As etapas são **Conteúdo → Novo ambiente → Revisão**. Informe IP/domínio das aplicações, interfaces de publicação, portas HTTP/HTTPS e do painel, domínio do painel, pastas das aplicações e pastas de backup. `0.0.0.0` significa escutar nas interfaces do servidor; não é o endereço público para abrir no navegador. O arquivo pode ser preparado para o destino ao exportar e adaptado novamente ao importar. Revise certificados, DNS, acessos aos bancos e subdomínios na área Proxy antes de aplicar.
+
+A importação valida formato, portas, domínios e revisão, informa cadastros substituídos e pastas ainda indisponíveis. Aplicações com o mesmo ID são substituídas; outras aplicações existentes são preservadas. A categoria de automações substitui os respectivos cadastros, deixando workers/agendadores desativados para revisão. WebSockets importados também ficam desativados; revise domínio/origens antes de habilitar. Agendas de backup, execução ao iniciar e envio remoto são desativados na importação para revisão do destino.
+
+**Importar e salvar não inicia/recria serviços, não altera o relógio do host e não publica novas portas imediatamente.** Após preparar código, diretórios, bancos e credenciais no destino, revise e aplique em Aplicações, Proxy, Automação e nas configurações de runtime/backup. As alterações de acesso ficam no cadastro até aplicar. Preferências importadas no `.env` entram nos serviços conforme suas próximas recriações. Serviços já em execução permanecem em execução com sua configuração anterior.
+
+O arquivo não transporta bancos/dumps, arquivos das aplicações, volumes, senhas/chaves/tokens, usuários do painel, conexões cifradas, sessões, vínculos com outros painéis, certificados ou políticas de segurança. Prepare/reconfigure esses itens separadamente. Argumentos de jobs não são exportados. Comandos personalizados de inicialização permanecem no cadastro e podem conter informações sensíveis; revise o arquivo antes de compartilhar. Somente administradores podem exportar/importar; requisições POST exigem sessão e CSRF. Nenhuma ferramenta MCP nova é exposta por este recurso.
+
+Antes de gravar, a configuração anterior fica em `.panel-state/migrations/<data-id>/`, com arquivos `0.before` (`.env`), `1.before` (`config/apps.json`) e `2.before` (`config/automation.json`), quando existirem. Esse backup local pode conter segredos do destino; preserve-o protegido. A importação verifica se a configuração mudou desde a revisão e recusa versões antigas. O arquivo Jubart.json não substitui um backup completo da instalação.
+
+<a id="plugins-docker"></a>
+
+<a id="sec-plugins-docker-por-json"></a>
+
+## Plugins Docker por JSON
+
+Em **Workspace → Plugins**, importe um manifesto **JubartPlugin v1** para instalar um serviço adicional na rede interna `app` existente. Use **Baixar modelo JSON**, substitua a imagem/portas e envie o arquivo para validar e revisar. O modelo contém uma imagem de exemplo que precisa ser substituída antes da instalação.
+
+```json
+{
+  "format": "JubartPlugin",
+  "version": 1,
+  "id": "meu-plugin",
+  "name": "Meu plugin",
+  "description": "Serviço adicional",
+  "image": "seu-registro/sua-imagem:1.0.0",
+  "environment": {},
+  "ports": [
+    {"container": 8080, "host": 19090, "bind": "127.0.0.1", "protocol": "tcp"}
+  ],
+  "volumes": [{"name": "data", "target": "/data"}],
+  "resources": {"memoryMiB": 512, "cpus": 1, "pids": 256}
+}
+```
+
+- Um manifesto cria **um único serviço** (`plugin`) em projeto Compose próprio: `jp-<identificador-da-instalação>-<id>`. O Compose principal não é modificado nem recriado por estas ações.
+- `image` exige tag explícita diferente de `latest` ou digest `sha256`. `command` opcional é uma lista de argumentos. `healthcheck` opcional é uma lista iniciada por `CMD`, por exemplo `["CMD", "programa-de-verificacao"]`; o programa precisa existir na imagem. Sem healthcheck, estar em execução não comprova saúde.
+- A rede `app` é identificada na definição Compose e deve existir antes da instalação. Se ainda não existe, inicie um serviço da infraestrutura que a utilize. O plugin usa essa rede como **externa**, sem criar ou remover a rede compartilhada. Conectividade não configura automaticamente credenciais ou permissões de bancos.
+- Portas do host precisam estar entre 1024 e 65535; o padrão é `127.0.0.1`. `0.0.0.0` permite publicação nas interfaces do servidor e exige cuidado com firewall. Conflitos com portas declaradas na infraestrutura, registradas por outros plugins ou publicadas no Docker são recusados. Não há configuração automática de domínio/TLS neste fluxo.
+- Apenas volumes nomeados próprios são aceitos. Não são aceitos bind mounts, nomes de volumes externos, host network, socket Docker, modo privilegiado ou campos Compose arbitrários. O serviço usa `cap_drop: ALL`, `no-new-privileges`, limites de memória/CPU/processos e rotação de logs. Algumas imagens exigem capacidades que este modelo não oferece e podem não iniciar.
+- Recursos: RAM 32–16384 MiB, CPU 0.1–16, processos 16–4096. Máximo de 25 plugins, 10 portas, 8 volumes e 50 variáveis por plugin. O arquivo enviado pela interface aceita até 128 KiB.
+- O painel oferece **iniciar, parar, reiniciar, detalhes, logs e remover**. Toda alteração passa por revisão com impacto; remover pede também o ID. Os comandos atuam no serviço do projeto do plugin. Nenhum `down` geral da infraestrutura é executado. Instalação ou recriação pode falhar por imagem, porta, rede ou recursos: o cadastro é mantido para revisão, nova tentativa ou remoção.
+- **Remover preserva os volumes por padrão.** Para apagar dados, marque explicitamente a opção irreversível. Antes de excluir, o painel confere as labels de propriedade dos volumes. Volumes em uso ou de outro projeto não são excluídos. Imagens e rede externa são preservadas.
+- Manifesto e Compose ficam em `.panel-state/plugins/<id>/`, com arquivos privados. A remoção arquiva o cadastro em `.panel-state/plugins-removed/`. Variáveis podem conter segredos: não publique os arquivos de importação nem os diretórios locais. A listagem/revisão retorna apenas nomes das variáveis; logs ocultam valores conhecidos, mas aplicações podem registrar outros dados sensíveis.
+- Para mudar um manifesto já instalado, remova o plugin preservando seus volumes e importe a nova versão com o mesmo ID. Não há atualização automática de imagens ou edição de Compose arbitrário nesta área.
+- Volumes preservados podem ser reutilizados ao reinstalar o mesmo ID nesta instalação. A coleção de plugins não é incluída no `Jubart.json` de migração; prepare manifestos e dados separadamente para outra infraestrutura.
+
+O recurso é administrativo. Imagens executam código no host Docker e têm acesso à rede interna selecionada. A separação dos projetos limita o alcance dos comandos de gestão, mas não elimina disputas por recursos nem os efeitos que o código do plugin possa causar nos serviços aos quais conseguir se conectar. O Docker do host deve já estar autenticado para imagens privadas; tokens de registro não fazem parte do manifesto.
+
+Na importação de plugins, ajuste as portas na seção **Portas do plugin** antes de validar: informe a porta interna, a porta publicada no servidor, TCP/UDP e o alcance local ou pelas interfaces do servidor. É possível adicionar ou remover publicações nessa etapa. As portas **80 e 443 do host são reservadas ao Traefik**, mesmo quando não estão publicadas; portas internas 80 e 443 são permitidas. As demais portas da infraestrutura e de outros plugins também são verificadas. Publicar uma porta não configura o firewall da VPS. Para alterar portas de um plugin já instalado, abra **Proxy & acessos → Plugins → Configurar portas**. Adicione, remova ou edite as publicações e confirme em **Salvar e aplicar**. O Jubart verifica conflitos novamente e recria apenas o plugin, preservando seus volumes e demais configurações. Se o plugin estiver parado, continuará parado. Se estiver em execução, haverá uma breve interrupção. Se a aplicação falhar, as portas salvas ficam disponíveis para revisão e nova tentativa. Essa guia gerencia publicação direta de portas; domínio/HTTPS e firewall não são configurados por ela.
+
+
+<a id="mercure"></a>
+
+<a id="sec-mercure-por-aplicacao-php"></a>
+
+## Mercure por aplicação PHP
+
+Em **Processos → Mercure**, clique em **Configurar**, ative o switch e use **Salvar e aplicar**. O recurso vem desativado por padrão. A aplicação deve estar habilitada e as redes `app` e `proxy` devem existir. As origens permitidas incluem protocolo e porta, quando necessária, como `http://localhost:5173` ou `https://app.exemplo.com`; não são aceitos curingas. Assinantes anônimos ficam desativados por padrão e, quando autorizados, recebem apenas eventos públicos.
+
+Cada aplicação possui um hub separado usando o módulo Mercure da imagem FrankenPHP já fixada na infraestrutura. O hub não monta o código da aplicação e funciona tanto com PHP tradicional quanto com Octane. A ativação valida a configuração no binário da imagem antes de publicar a rota. O painel tenta a configuração moderna e, se necessário, valida a configuração legada; a interface informa **Mercure 1.0** ou **Mercure 0.x** conforme o formato aceito. A detecção não atualiza imagens nem instala bibliotecas na aplicação. Falha de inicialização mantém o cadastro pendente e a rota desativada.
+
+O endereço público é `http(s)://DOMINIO:PORTA/.well-known/mercure`, passando pelo Traefik e pela política de segurança da aplicação, sem portas públicas adicionais. A rota tem prioridade própria e envio imediato do fluxo SSE; não usa a interceptação de páginas de erro nem compressão do PHP. O domínio e o HTTPS acompanham as configurações da aplicação. Depois de mudar domínio, porta, HTTPS ou imagem FrankenPHP, aplique novamente o Mercure. Aplicar a configuração global retira rotas de hubs incompatíveis/pendentes; desativar ou remover a aplicação também encerra seu hub.
+
+**Como integrar** abre instruções e exemplos adaptados ao protocolo detectado, com três guias: navegador, PHP/Laravel e eventos privados. O navegador usa `EventSource` e a URL pública; o backend publica por HTTP usando a URL interna na rede `app`. Como o hub é separado, `mercure_publish()` no processo da aplicação não publica neste hub. Workers e comandos também publicam por HTTP. Para Laravel, exponha as variáveis em um arquivo de configuração, leia com `config()` e atualize o cache e os workers após mudanças. O exemplo PHP usa JWT de curta duração e escopo de tópico; bibliotecas JWT e Symfony Mercure podem ser usadas conforme a versão do protocolo.
+
+**Chaves** exige uma consulta explícita de administrador, com CSRF, registrada na auditoria. As chaves distintas de publicação e assinatura são geradas criptograficamente, ficam em arquivo privado `0600` dentro de `.panel-state/mercure/<aplicacao>/hub.env` e não aparecem na listagem. São segredos persistidos localmente, sem criptografia em repouso: proteja o acesso ao host e aos backups. Copie-as somente para o backend, nunca para variáveis `VITE_*`, frontend, Git ou tokens fixos em exemplos. O Jubart não modifica o `.env` da aplicação. **Gerar novas chaves** invalida a assinatura de tokens antigos após a recriação; atualize também as aplicações. Eventos privados exigem tokens com os tópicos que cada usuário pode assinar; CORS não substitui autorização. No navegador, EventSource nativo pode usar cookie HttpOnly emitido pelo backend. O guia informa o nome de cookie configurado para cada protocolo e modo HTTP/HTTPS.
+
+Desativar encerra as conexões SSE, preservando chaves e o volume do histórico. O hub é administrado em projeto Compose separado com um único serviço, redes externas existentes e volume próprio. Essa separação também significa que `docker compose down` da infraestrutura principal não encerra esses projetos: desative seus hubs no painel antes de desligar toda a instalação. Os limites iniciais por hub são 256 MiB, 1 CPU e 128 processos. O histórico usa o armazenamento padrão da versão integrada: acompanhe o volume, pois não há retenção configurável nesta tela. Logs são limitados e os valores conhecidos das chaves são ocultados; não há registro de acesso HTTP do hub habilitado. Configurações Mercure, chaves e seus volumes não entram no `Jubart.json`; prepare-os separadamente ao migrar de servidor.
+
+Referências: [FrankenPHP / Mercure](https://frankenphp.dev/docs/mercure/) e [configuração do hub](https://mercure.rocks/docs/hub/config).
+
+
+<a id="manutencao-painel"></a>
+
+<a id="sec-recompilar-o-painel-pela-administracao"></a>
+
+## Recompilar o painel pela administração
+
+Em **Administração → Manutenção do painel**, clique em **Recompilar painel** e confirme. A ação executa o equivalente a `docker compose up -d --build --no-deps panel`, usando explicitamente o projeto e os arquivos Compose desta instalação. Ela usa o código já presente no servidor; não baixa alterações do GitHub. Consultas SQL, transferências e operações em andamento impedem o início. Durante a recompilação, novas alterações administrativas ficam bloqueadas.
+
+Um executor temporário usa a imagem atual do painel, suas montagens e o mesmo usuário/grupos do processo do painel para continuar trabalhando mesmo quando o serviço `panel` é recriado. As capabilities são removidas. Antes de iniciar, o servidor salva uma cópia privada da configuração Compose resolvida e do ambiente da solicitação, preservando os caminhos originais e escapando valores literais; o executor usa essa configuração congelada, sem precisar de permissões extras para ler configurações pertencentes a outro usuário do host. Ele não publica portas e é removido automaticamente ao terminar. Usa rede bridge para permitir a autenticação do BuildKit nos registros de imagens; a imagem do painel inclui os plugins Docker Compose e Buildx usados na construção. O comando atua somente no serviço `panel`, sem recriar aplicações ou bancos nem excluir volumes. A tela mostra uma indicação de andamento, sem percentual artificial; o resultado e a saída com valores conhecidos de segredos ocultados ficam em `.panel-state/panel-maintenance/state.json`, arquivo privado fora do Git. A confirmação final exige que o painel volte saudável. Logs de build podem conter dados produzidos pelos próprios comandos do projeto: mantenha o acesso administrativo protegido.
+
+A sessão pode ser encerrada durante a recriação. Aguarde o retorno, entre novamente e consulte **Manutenção do painel** para ver o resultado. Se o `.env` mudou a porta ou o domínio, use o novo endereço. Falhas de build ou de saúde ficam registradas; confira o serviço antes de repetir. Não há rollback automático de imagens. O instalador e o Docker do host continuam sendo pré-requisitos.
+
+Para disponibilizar esse botão pela primeira vez em uma instalação existente, atualize o código e execute uma vez no terminal:
+
+```bash
+docker compose up -d --build --no-deps panel
+```
+
+Depois dessa atualização, as próximas recompilações podem ser iniciadas pelo próprio painel.
+
+
+Na mesma tela **Administração → Manutenção do painel**, **Iniciar serviços** executa o equivalente a `docker compose up -d --build`. Use após salvar/aplicar os apontamentos no assistente de configuração. O comando respeita os perfis ativos de `COMPOSE_PROFILES`: serviços opcionais desabilitados não são ativados por esse botão. Plugins e hubs Mercure em projetos separados continuam com sua administração própria. Serviços existentes podem ser recriados, inclusive o painel, encerrando conexões e a sessão. Volumes são preservados. A ação usa o mesmo executor restrito e a configuração privada congelada da manutenção do painel; consultas e transferências em andamento impedem o início.
+
+A conclusão confirma os serviços habilitados em execução e os healthchecks disponíveis aprovados. Um serviço sem healthcheck em execução não comprova funcionamento de todas as rotas. Falhas podem deixar parte dos serviços iniciada: veja a saída e corrija os apontamentos antes de tentar novamente. Durante o processo, a tela mostra andamento sem percentual artificial. Se o painel reiniciar, entre novamente e consulte **Última operação**. Essa ação substitui a etapa manual de subir os demais serviços após `./install.sh`.

@@ -30,7 +30,7 @@ export function validateAutomation(config) {
 function automationBase(app, id) {
   const prefix = slots[app].prefix;
   const memory='${CONTAINER_MEMORY_'+id.toUpperCase().replaceAll('-','_')+':-0}';
-  const base = { mem_limit:memory,memswap_limit:memory,extends: { file: 'compose.yaml', service: 'php' }, container_name: '${COMPOSE_PROJECT_NAME:-laravel}-' + id };
+  const base = { cpus:'${CONTAINER_CPUS_'+id.toUpperCase().replaceAll('-','_')+':-0}',pids_limit:'${CONTAINER_PIDS_'+id.toUpperCase().replaceAll('-','_')+':--1}',mem_limit:memory,memswap_limit:memory,extends: { file: 'compose.yaml', service: 'php' }, container_name: '${COMPOSE_PROJECT_NAME:-laravel}-' + id };
   if (app === 'main') return base;
   return { ...base, environment: {
     APP_URL: '${' + prefix + '_URL}',

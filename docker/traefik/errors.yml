@@ -1,0 +1,26 @@
+http:
+  routers:
+    jubart-fallback-http:
+      rule: PathPrefix(`/`)
+      priority: 1
+      entryPoints: [web]
+      service: jubart-error-pages
+    jubart-fallback-https:
+      rule: PathPrefix(`/`)
+      priority: 1
+      entryPoints: [websecure]
+      service: jubart-error-pages
+      tls: {}
+  middlewares:
+    jubart-errors:
+      errors:
+        status: ["404", "500", "502", "503", "504"]
+        service: jubart-error-pages
+        query: /{status}.html
+        errorRequestHeaders: [Accept]
+  services:
+    jubart-error-pages:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: http://error-pages:8080

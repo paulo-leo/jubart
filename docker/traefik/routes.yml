@@ -1,15 +1,33 @@
 http:
   routers:
     app-http:
+      priority: 10
+      middlewares: [app-security-main{{ if eq (env "APP_TLS_ENABLED") "true" }}, force-https{{ end }}]
       rule: 'Host(`{{ env "APP_DOMAIN" }}`)'
       entryPoints:
         - web
       service: app
+    app-http-browser:
+      priority: 50
+      middlewares: [jubart-errors, app-security-main{{ if eq (env "APP_TLS_ENABLED") "true" }}, force-https{{ end }}]
+      rule: '(Host(`{{ env "APP_DOMAIN" }}`)) && (Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)'
+      entryPoints:
+        - web
+      service: app
 {{ if eq (env "APP_TLS_ENABLED") "true" }}
-      middlewares:
-        - force-https
     app-https:
+      priority: 10
+      middlewares: [app-security-main]
       rule: 'Host(`{{ env "APP_DOMAIN" }}`)'
+      entryPoints:
+        - websecure
+      service: app
+      tls:
+        certResolver: letsencrypt
+    app-https-browser:
+      priority: 50
+      middlewares: [jubart-errors, app-security-main]
+      rule: '(Host(`{{ env "APP_DOMAIN" }}`)) && (Method(`GET`) || Method(`HEAD`)) && HeaderRegexp(`Accept`, `(?i)text/html`) && !HeaderRegexp(`X-Inertia`, `.+`) && !HeaderRegexp(`Upgrade`, `.+`)'
       entryPoints:
         - websecure
       service: app

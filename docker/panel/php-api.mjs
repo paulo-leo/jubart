@@ -17,7 +17,7 @@ export function validatePHP(data){
  for(const [key,kind] of Object.entries(phpFields)){const v=data.settings[key];if(v===undefined)continue;const rules={digest:/^sha256:[a-f0-9]{64}$/,version:/^[0-9][A-Za-z0-9._-]{0,80}$/,size:/^(?:-1|[0-9]+[KMG]?)$/i,integer:/^[0-9]{1,8}$/,display:/^(On|Off)$/,bit:/^[01]$/,boolean:/^(true|false)$/};if(typeof v!=='string'||!rules[kind].test(v))fail(`Valor inválido: ${key}`);}
  return data;
 }
-export function createPHPAPI({root,readEnv,loadConfig,compose,startOperation,automation}){
+export function createPHPAPI({root,readEnv,loadConfig,compose,startOperation,automation,afterApply}){
  const directory=path.join(root,'docker/php');let pending=Promise.resolve();
  async function read(){const files=Object.fromEntries(await Promise.all(phpFiles.map(async name=>[name,await fs.readFile(path.join(directory,name),'utf8')])));const env=parseEnv(await readEnv());const settings=Object.fromEntries(Object.keys(phpFields).map(k=>[k,env[k]||({boolean:'false',bit:'0',display:'Off'}[phpFields[k]]||'')]));const serverConfig=await fs.readFile(path.join(directory,'Caddyfile'),'utf8').catch(e=>{if(e.code==='ENOENT')return '';throw e;});return {files,settings,serverConfig,revision:createHash('sha256').update(JSON.stringify({files,settings})).digest('hex'),modules:phpModules,applications:(await loadConfig()).config.applications.filter(a=>(a.type||'php')==='php').map(({id,name,enabled,mode})=>({id,name,enabled,mode}))};}
  return {async handle(route,method,data){
@@ -31,7 +31,7 @@ export function createPHPAPI({root,readEnv,loadConfig,compose,startOperation,aut
   if(route==='/api/php/apply'&&method==='POST'){
    const current=await read();if(current.revision!==data.revision)fail('Configuração alterada. Atualize antes de aplicar.',409);
    const apps=(await loadConfig()).config.applications.filter(a=>a.enabled&&(a.type||'php')==='php');if(!apps.length)fail('Nenhuma aplicação PHP habilitada.');
-   const operation=startOperation('Reconstruir PHP e FrankenPHP',async()=>{await compose(['--profile','*','config','--quiet']);for(const app of apps)await automation.stopForApp(app.id);await compose(['up','-d','--build','--force-recreate',...apps.map(a=>slots[a.id].service)],undefined,{timeout:1800000,maxBuffer:16*1024*1024});await automation.recreateEnabled();});return {status:202,body:{operation}};
+   const operation=startOperation('Reconstruir PHP e FrankenPHP',async()=>{await compose(['--profile','*','config','--quiet']);for(const app of apps)await automation.stopForApp(app.id);await compose(['up','-d','--build','--force-recreate',...apps.map(a=>slots[a.id].service)],undefined,{timeout:1800000,maxBuffer:16*1024*1024});await automation.recreateEnabled();if(afterApply)await afterApply();});return {status:202,body:{operation}};
   }
   const match=route.match(/^\/api\/php\/runtime\/(main|app[0-9]+)$/);
   if(match&&method==='GET'){

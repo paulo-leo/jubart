@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jubart MCP"
+  short_description: "Consultar configuração e preparar .env com contexto MCP"
+  default_prompt: "Use $jubart-mcp para consultar contexto, configuração e saúde, preparar um .env local quando solicitado, revisar a prévia e operar somente aplicações, WebSockets e automações autorizadas."

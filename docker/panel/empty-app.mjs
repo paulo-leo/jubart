@@ -3,6 +3,7 @@ import path from 'node:path';
 export async function inspectEmptyApp(root,config,id){
  const app=config.applications.find(a=>a.id===id);
  if(!app)throw new Error('Aplicação não cadastrada.');
+ if(app.websocket?.enabled)return {canRemove:false,reason:'Desative e aplique o WebSocket antes de remover a aplicação.'};
  if(id==='main')return {canRemove:false,reason:'A aplicação principal deve ser mantida.'};
  try{
   const folder=path.resolve(root,app.directory),real=await fs.realpath(folder),infra=await fs.realpath(root);

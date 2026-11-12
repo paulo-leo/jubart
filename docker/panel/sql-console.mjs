@@ -1,3 +1,4 @@
+import {splitSQL} from './sql-statements.mjs';
 import {createHash} from 'node:crypto';
 import mysql from 'mysql2';
 import pg from 'pg';
@@ -42,7 +43,7 @@ export async function runSQL(input,{mysqlFactory=mysql.createConnection,pgFactor
      query.on('result',row=>{if(settled)return;if(Array.isArray(row)){if(!collector.row(row)){stop();finish(null,true);}}else collector.result.affectedRows=Number(row.affectedRows||0);});
      query.on('error',error=>finish(error));query.on('end',()=>finish());
     }else{
-     connection=pgFactory({...common,connectionTimeoutMillis:5000,statement_timeout:15000,lock_timeout:5000,query_timeout:17000,application_name:'infra-control-sql'});connection.on('error',error=>finish(error));await connection.connect();
+     connection=pgFactory({...common,connectionTimeoutMillis:5000,statement_timeout:15000,lock_timeout:5000,query_timeout:17000,application_name:'jubart-sql'});connection.on('error',error=>finish(error));await connection.connect();
      const role=await connection.query("SELECT rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls, pg_has_role(current_user,'pg_read_server_files','MEMBER') OR pg_has_role(current_user,'pg_write_server_files','MEMBER') OR pg_has_role(current_user,'pg_execute_server_program','MEMBER') AS server_access FROM pg_roles WHERE rolname=current_user");
      if(!role.rows[0]||Object.values(role.rows[0]).some(v=>v===true))throw fail('Use uma conta de aplicação sem privilégios administrativos ou acesso a arquivos/programas do servidor.');if(settled)return;
      const query=new pg.Query({text:input.sql,rowMode:'array',queryMode:'extended'});let pgFields=false;
@@ -54,7 +55,7 @@ export async function runSQL(input,{mysqlFactory=mysql.createConnection,pgFactor
   });
  }finally{clearTimeout(timer);if(input.engine==='mariadb')connection?.destroy();else await connection?.end().catch(()=>{});}
 }
-export function createSQLConsole({root,readEnv,databases,audit,runner=runSQL}){
+export function createSQLConsole({root,readEnv,databases,audit,runner=runSQL,canExecute=()=>true}){
  let busy=false;const vault=root?createVault(root,readEnv):null;
  async function context(engine,database){
   const env=parseEnv(await readEnv());if(!['mariadb','postgres'].includes(engine)||!databaseEnabled(env,engine))throw fail('SGBD indisponível.',409);protectDatabase(database);
@@ -73,17 +74,29 @@ export function createSQLConsole({root,readEnv,databases,audit,runner=runSQL}){
   }
   return {env,inventory,candidates};
  }
- return {async connections(engine,database){const {candidates}=await context(engine,database);return {connections:candidates.map(({prefix,...option})=>option)};},async execute(engine,data,actor){
-  if(busy)throw fail('Já existe uma consulta SQL em execução. Aguarde.',409);busy=true;
-  let meta;
-  try{
-   const ctx=await context(engine,data.database);let credentials=data;
+ async function resolveCredentials(engine,data){
+ const ctx=await context(engine,data.database);let credentials=data;
    if(data.credentialId&&data.credentialId!=='manual'){
     const option=ctx.candidates.find(c=>c.id===data.credentialId);if(!option)throw fail('Credencial automática indisponível. Atualize as conexões ou informe outra conta.');
     const password=option.source==='env'?ctx.env[option.prefix+'_PASSWORD']:(await vault.reveal(engine,option.user,option.host)).password;
     credentials={...data,user:option.user,password};
    }
-   const input=validateSQLInput(engine,credentials,ctx.env);
+   return {credentials,env:ctx.env};
+ }
+ return {isBusy:()=>busy,resolveCredentials,async connect(engine,data,actor){await this.execute(engine,{...data,sql:'SELECT 1 AS connected;',batch:false},actor);return {connected:true};},async connections(engine,database){const {candidates}=await context(engine,database);return {connections:candidates.map(({prefix,...option})=>option)};},async execute(engine,data,actor){
+  if(!canExecute())throw fail('Painel em manutenção. Aguarde a operação terminar.',409);if(busy)throw fail('Já existe uma consulta SQL em execução. Aguarde.',409);busy=true;
+  let meta;
+  try{
+   if(data.credentialId&&data.credentialId!=='manual')throw fail('Digite usuário e senha para acessar o console SQL.');
+   const {env}=await context(engine,data.database);const credentials=data;
+   const input=validateSQLInput(engine,credentials,env);
+   if(data.batch){const statements=splitSQL(input.sql,engine),results=[],started=Date.now();let rows=0,bytes=0,stopped=false;
+    for(let i=0;i<statements.length;i++){const remaining=30000-(Date.now()-started);if(remaining<=0||rows>=SQL_LIMITS.rows||bytes>=SQL_LIMITS.bytes){stopped=true;break;}const meta={actor,event:'sql.execute',engine,database:input.database,user:input.user,statement:i+1,sqlHash:createHash('sha256').update(statements[i]).digest('hex')};await audit({...meta,result:'requested'});
+     try{const result=await runner({...input,sql:statements[i]},{limits:{...SQL_LIMITS,rows:SQL_LIMITS.rows-rows,bytes:SQL_LIMITS.bytes-bytes,timeoutMs:Math.min(SQL_LIMITS.timeoutMs,remaining)}});rows+=result.returnedRows||0;bytes+=Buffer.byteLength(JSON.stringify(result));results.push({index:i+1,state:'success',result});await audit({...meta,result:'success',returnedRows:result.returnedRows,affectedRows:result.affectedRows});if(result.partial||result.truncated){stopped=true;break;}}
+     catch(error){const message=String(error.sqlMessage||error.message||'Falha SQL').split(input.password).join('[oculto]').slice(0,1500);results.push({index:i+1,state:'error',error:message});await audit({...meta,result:'failed',code:String(error.code||'SQL_ERROR').slice(0,80)});stopped=true;break;}
+    }
+    return {batch:true,results,total:statements.length,executed:results.length,stopped,durationMs:Date.now()-started,note:'Instruções executadas em sequência, em conexões independentes. Interrompe no primeiro erro ou limite. Alterações anteriores não são desfeitas.'};
+   }
    meta={actor,event:'sql.execute',engine,database:input.database,user:input.user,sqlHash:createHash('sha256').update(input.sql).digest('hex')};await audit({...meta,result:'requested'});
    try{const result=await runner(input);await audit({...meta,result:'success',returnedRows:result.returnedRows,affectedRows:result.affectedRows,durationMs:result.durationMs,truncated:result.truncated});return result;}
    catch(error){await audit({...meta,result:'failed',code:String(error.code||'SQL_ERROR').slice(0,80)});const message=String(error.sqlMessage||error.message||'Falha SQL').split(input.password).join('[oculto]').slice(0,1500);throw fail(message);}

@@ -2,6 +2,8 @@ services:
   panel:
     mem_limit: ${CONTAINER_MEMORY_PANEL:-0}
     memswap_limit: ${CONTAINER_MEMORY_PANEL:-0}
+    cpus: ${CONTAINER_CPUS_PANEL:-0}
+    pids_limit: ${CONTAINER_PIDS_PANEL:--1}
     build:
       context: ./docker/panel
       args:
@@ -12,6 +14,7 @@ services:
     ports:
       - "${PANEL_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-9090}:3000"
     environment:
+      PANEL_ACME_STORAGE: /opt/panel-acme/acme.json
       PANEL_WORKSPACE_DIRECTORY: ${PANEL_WORKSPACE_DIRECTORY}
       PANEL_USERNAME: ${PANEL_USERNAME}
       PANEL_PASSWORD: ${PANEL_PASSWORD:?Defina PANEL_PASSWORD no .env}
@@ -33,6 +36,7 @@ services:
         read_only: false
         bind:
           create_host_path: false
+      - traefik_acme:/opt/panel-acme:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - type: bind
         source: ${HOST_STORAGE_DIRECTORY:-.}
@@ -57,9 +61,39 @@ services:
       - app
       - proxy
 
+  error-pages:
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    image: node:${NODE_VERSION}
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 64m
+    command: ["node", "/server.mjs"]
+    volumes:
+      - ./docker/error-pages/server.mjs:/server.mjs:ro
+      - ./docker/php/errors:/pages:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [proxy]
+
   traefik:
+    depends_on:
+      error-pages:
+        condition: service_started
     mem_limit: ${CONTAINER_MEMORY_TRAEFIK:-0}
     memswap_limit: ${CONTAINER_MEMORY_TRAEFIK:-0}
+    cpus: ${CONTAINER_CPUS_TRAEFIK:-0}
+    pids_limit: ${CONTAINER_PIDS_TRAEFIK:--1}
     image: traefik:${TRAEFIK_VERSION}
     restart: unless-stopped
     logging:
@@ -110,6 +144,8 @@ services:
   php:
     mem_limit: ${CONTAINER_MEMORY_PHP:-0}
     memswap_limit: ${CONTAINER_MEMORY_PHP:-0}
+    cpus: ${CONTAINER_CPUS_PHP:-0}
+    pids_limit: ${CONTAINER_PIDS_PHP:--1}
     container_name: php
     build:
       context: ./docker/php
@@ -191,6 +227,8 @@ services:
   node:
     mem_limit: ${CONTAINER_MEMORY_NODE:-0}
     memswap_limit: ${CONTAINER_MEMORY_NODE:-0}
+    cpus: ${CONTAINER_CPUS_NODE:-0}
+    pids_limit: ${CONTAINER_PIDS_NODE:--1}
     image: node:${APP_NODE_VERSION:-${NODE_VERSION}}
     profiles: ["tools"]
     working_dir: /var/www/html
@@ -212,6 +250,8 @@ services:
   vite:
     mem_limit: ${CONTAINER_MEMORY_VITE:-0}
     memswap_limit: ${CONTAINER_MEMORY_VITE:-0}
+    cpus: ${CONTAINER_CPUS_VITE:-0}
+    pids_limit: ${CONTAINER_PIDS_VITE:--1}
     image: node:${APP_NODE_VERSION:-${NODE_VERSION}}
     restart: unless-stopped
     working_dir: /var/www/html
@@ -241,6 +281,8 @@ services:
   ssr:
     mem_limit: ${CONTAINER_MEMORY_SSR:-0}
     memswap_limit: ${CONTAINER_MEMORY_SSR:-0}
+    cpus: ${CONTAINER_CPUS_SSR:-0}
+    pids_limit: ${CONTAINER_PIDS_SSR:--1}
     image: node:${APP_NODE_VERSION:-${NODE_VERSION}}
     restart: unless-stopped
     working_dir: /var/www/html
@@ -265,6 +307,8 @@ services:
     profiles: ["db-mariadb-${MARIADB_ENABLED:-true}"]
     mem_limit: ${CONTAINER_MEMORY_MARIADB:-0}
     memswap_limit: ${CONTAINER_MEMORY_MARIADB:-0}
+    cpus: ${CONTAINER_CPUS_MARIADB:-0}
+    pids_limit: ${CONTAINER_PIDS_MARIADB:--1}
     image: mariadb:${MARIADB_VERSION}
     command: ["--default-storage-engine=${MARIADB_DEFAULT_STORAGE_ENGINE:-InnoDB}"]
     ports:
@@ -290,6 +334,8 @@ services:
   valkey:
     mem_limit: ${CONTAINER_MEMORY_VALKEY:-0}
     memswap_limit: ${CONTAINER_MEMORY_VALKEY:-0}
+    cpus: ${CONTAINER_CPUS_VALKEY:-0}
+    pids_limit: ${CONTAINER_PIDS_VALKEY:--1}
     image: valkey/valkey:${VALKEY_VERSION}
     restart: unless-stopped
     environment:
@@ -325,6 +371,8 @@ services:
     profiles: ["db-mariadb-${MARIADB_ENABLED:-true}"]
     mem_limit: ${CONTAINER_MEMORY_BACKUP:-0}
     memswap_limit: ${CONTAINER_MEMORY_BACKUP:-0}
+    cpus: ${CONTAINER_CPUS_BACKUP:-0}
+    pids_limit: ${CONTAINER_PIDS_BACKUP:--1}
     build:
       context: ./docker/backup
       args:
@@ -337,10 +385,10 @@ services:
       BACKUP_DATABASES: ${BACKUP_DATABASES:-*}
       BACKUP_DB_DATABASE: ${DB_DATABASE}
       BACKUP_DB_PASSWORD: ${DB_ROOT_PASSWORD}
-      BACKUP_ENABLED: ${BACKUP_ENABLED}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-false}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE}
       BACKUP_TIMEZONE: ${BACKUP_TIMEZONE}
-      BACKUP_RUN_ON_START: ${BACKUP_RUN_ON_START}
+      BACKUP_RUN_ON_START: ${BACKUP_RUN_ON_START:-false}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS}
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS}
       BACKUP_REMOTE_ENABLED: ${BACKUP_REMOTE_ENABLED}
@@ -372,6 +420,8 @@ services:
     profiles: ["db-postgres-${POSTGRES_ENABLED:-true}"]
     mem_limit: ${CONTAINER_MEMORY_POSTGRES:-0}
     memswap_limit: ${CONTAINER_MEMORY_POSTGRES:-0}
+    cpus: ${CONTAINER_CPUS_POSTGRES:-0}
+    pids_limit: ${CONTAINER_PIDS_POSTGRES:--1}
     image: postgres:${POSTGRES_VERSION}
     ports:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
@@ -396,6 +446,8 @@ services:
     profiles: ["db-postgres-${POSTGRES_ENABLED:-true}"]
     mem_limit: ${CONTAINER_MEMORY_BACKUP_POSTGRES:-0}
     memswap_limit: ${CONTAINER_MEMORY_BACKUP_POSTGRES:-0}
+    cpus: ${CONTAINER_CPUS_BACKUP_POSTGRES:-0}
+    pids_limit: ${CONTAINER_PIDS_BACKUP_POSTGRES:--1}
     build:
       context: ./docker/backup
       dockerfile: Dockerfile.postgres
@@ -408,10 +460,10 @@ services:
       BACKUP_DB_USERNAME: ${POSTGRES_USER}
       BACKUP_DB_PASSWORD: ${POSTGRES_PASSWORD}
       BACKUP_DB_DATABASE: ${POSTGRES_DB}
-      BACKUP_ENABLED: ${PG_BACKUP_ENABLED}
+      BACKUP_ENABLED: ${PG_BACKUP_ENABLED:-false}
       BACKUP_SCHEDULE: ${PG_BACKUP_SCHEDULE}
       BACKUP_TIMEZONE: ${PG_BACKUP_TIMEZONE}
-      BACKUP_RUN_ON_START: ${PG_BACKUP_RUN_ON_START}
+      BACKUP_RUN_ON_START: ${PG_BACKUP_RUN_ON_START:-false}
       BACKUP_RETENTION_DAYS: ${PG_BACKUP_RETENTION_DAYS}
       BACKUP_MAX_AGE_HOURS: ${PG_BACKUP_MAX_AGE_HOURS}
       BACKUP_DATABASES: ${PG_BACKUP_DATABASES}
@@ -445,6 +497,8 @@ services:
     profiles: ["db-mariadb-${MARIADB_ENABLED:-true}"]
     mem_limit: ${CONTAINER_MEMORY_PHPMYADMIN:-0}
     memswap_limit: ${CONTAINER_MEMORY_PHPMYADMIN:-0}
+    cpus: ${CONTAINER_CPUS_PHPMYADMIN:-0}
+    pids_limit: ${CONTAINER_PIDS_PHPMYADMIN:--1}
     image: phpmyadmin:${PHPMYADMIN_VERSION}
     restart: unless-stopped
     ports:
@@ -453,7 +507,9 @@ services:
       TZ: ${TZ}
       PMA_HOST: mariadb
       PMA_PORT: 3306
-      UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT}
+      UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-128M}
+      MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-512M}
+      MAX_EXECUTION_TIME: ${PHPMYADMIN_MAX_EXECUTION_TIME:-600}
     depends_on:
       mariadb:
         condition: service_healthy
@@ -464,6 +520,8 @@ services:
   php-app2:
     mem_limit: ${CONTAINER_MEMORY_PHP_APP2:-0}
     memswap_limit: ${CONTAINER_MEMORY_PHP_APP2:-0}
+    cpus: ${CONTAINER_CPUS_PHP_APP2:-0}
+    pids_limit: ${CONTAINER_PIDS_PHP_APP2:--1}
     extends:
       service: php
     container_name: php-app2
@@ -490,6 +548,8 @@ services:
   node-app2:
     mem_limit: ${CONTAINER_MEMORY_NODE_APP2:-0}
     memswap_limit: ${CONTAINER_MEMORY_NODE_APP2:-0}
+    cpus: ${CONTAINER_CPUS_NODE_APP2:-0}
+    pids_limit: ${CONTAINER_PIDS_NODE_APP2:--1}
     extends:
       service: node
     profiles: ["tools-app2"]
@@ -503,6 +563,8 @@ services:
   php-app3:
     mem_limit: ${CONTAINER_MEMORY_PHP_APP3:-0}
     memswap_limit: ${CONTAINER_MEMORY_PHP_APP3:-0}
+    cpus: ${CONTAINER_CPUS_PHP_APP3:-0}
+    pids_limit: ${CONTAINER_PIDS_PHP_APP3:--1}
     extends:
       service: php
     container_name: php-app3
@@ -529,6 +591,8 @@ services:
   node-app3:
     mem_limit: ${CONTAINER_MEMORY_NODE_APP3:-0}
     memswap_limit: ${CONTAINER_MEMORY_NODE_APP3:-0}
+    cpus: ${CONTAINER_CPUS_NODE_APP3:-0}
+    pids_limit: ${CONTAINER_PIDS_NODE_APP3:--1}
     extends:
       service: node
     profiles: ["tools-app3"]
