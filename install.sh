@@ -15,7 +15,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 cd "$JUBART_ROOT"
-for JUBART_TOOL in docker python3 readlink; do
+for JUBART_TOOL in docker python3 readlink ip stat; do
   command -v "$JUBART_TOOL" >/dev/null 2>&1 || { echo "Instale $JUBART_TOOL antes de continuar." >&2; exit 1; }
 done
 python3 -c 'import ssl, zoneinfo; zoneinfo.ZoneInfo("UTC"); assert ssl.create_default_context().get_ca_certs(), "Instale ca-certificates no host."' || { echo 'Python 3.9+ com SSL, dados de fuso horário (tzdata) e ca-certificates são necessários. Consulte o README.' >&2; exit 1; }
@@ -38,7 +38,16 @@ fi
 JUBART_NODE_IMAGE=$(sed -n 's/^NODE_VERSION=//p' .env.example)
 [ -n "$JUBART_NODE_IMAGE" ] || { echo 'Imagem de inicialização não encontrada.' >&2; exit 1; }
 echo 'Preparando configuração local; valores personalizados serão preservados…'
-docker run --rm --user "$(id -u):$(id -g)" -v "$JUBART_ROOT:/workspace" -w /workspace -e "JUBART_HOST_DIRECTORY=$JUBART_ROOT" "node:$JUBART_NODE_IMAGE" node scripts/initialize-local.mjs
+# Inspect only the local Docker daemon and the host route tables when choosing a subnet.
+if [ -n "${DOCKER_CONTEXT:-}" ]; then
+  JUBART_DOCKER_ENDPOINT=$(docker context inspect --format '{{.Endpoints.docker.Host}}')
+else
+  JUBART_DOCKER_ENDPOINT=${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}
+fi
+case "$JUBART_DOCKER_ENDPOINT" in unix://*) JUBART_DOCKER_SOCKET=${JUBART_DOCKER_ENDPOINT#unix://} ;; *) echo 'A reserva automática requer Docker local por socket Unix e as rotas do mesmo host.'; exit 1 ;; esac
+JUBART_HOST_ROUTES=$(ip -j -4 route show table all)
+export JUBART_HOST_ROUTES
+docker run --rm --network none --user "$(id -u):$(id -g)" --group-add "$(stat -c %g "$JUBART_DOCKER_SOCKET")" -v "$JUBART_DOCKER_SOCKET:/var/run/docker.sock" -e JUBART_PROXY_AUTOINIT=true -e JUBART_HOST_ROUTES -v "$JUBART_ROOT:/workspace" -w /workspace -e "JUBART_HOST_DIRECTORY=$JUBART_ROOT" "node:$JUBART_NODE_IMAGE" node scripts/initialize-local.mjs
 if [ "$JUBART_START" = true ]; then
   echo 'Construindo e iniciando o painel Jubart…'
   docker compose up -d --build --no-deps panel || { echo 'Falha ao construir/iniciar o painel. Consulte a seção Erros de instalação no README; para x509 verifique os certificados do host e do painel.' >&2; exit 1; }

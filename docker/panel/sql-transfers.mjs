@@ -1,3 +1,4 @@
+import {proxyComposeArgs} from './proxy-network.mjs';
 import fs from 'node:fs/promises';
 import {createReadStream,createWriteStream} from 'node:fs';
 import path from 'node:path';
@@ -16,7 +17,7 @@ export function transferCommand(engine,kind,database,user,settings={}){
  identifier(user);return ['exec','-T','--user','65534:65534',engine,'env','-i','PATH=/usr/local/bin:/usr/bin:/bin','sh','-c',engine==='mariadb'?'IFS= read -r PASSWORD; export MYSQL_PWD="$PASSWORD"; exec mariadb --no-defaults --host=127.0.0.1 --user="$1" --database="$2" --default-character-set='+(options.charset==='utf8'?'utf8mb4':'latin1')+(options.foreignKeys?'':' --init-command="SET SESSION FOREIGN_KEY_CHECKS=0"'):'IFS= read -r PASSWORD; export PGPASSWORD="$PASSWORD"; export PGCLIENTENCODING='+(options.charset==='utf8'?'UTF8':'LATIN1')+'; exec psql --host=127.0.0.1 --username="$1" --dbname="$2" --no-psqlrc --set=ON_ERROR_STOP=1','--',user,database];
 }
 export async function runTransfer({root,job,input,password,output,signal,onBytes,spawnProcess=spawn}){
- const args=['compose','--project-directory',root,'--env-file',path.join(root,'.env'),'-f',path.join(root,'compose.yaml'),'-f',path.join(root,'config/automation.compose.json'),'-f',path.join(root,'config/apps.compose.yaml'),...transferCommand(job.engine,job.kind,job.database,job.user,job.options)];
+ const args=['compose','--project-directory',root,'--env-file',path.join(root,'.env'),'-f',path.join(root,'compose.yaml'),'-f',path.join(root,'config/automation.compose.json'),'-f',path.join(root,'config/apps.compose.yaml'),...proxyComposeArgs(root),...transferCommand(job.engine,job.kind,job.database,job.user,job.options)];
  const child=spawnProcess('docker',args,{cwd:root,stdio:['pipe','pipe','pipe'],signal});let errorBytes=0;child.stderr.on('data',b=>{errorBytes+=b.length;});
  child.stdin.on('error',()=>{});child.stdout.on('error',()=>{});
  const done=new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>code===0?resolve():reject(new Error('Cliente SQL falhou; confira credenciais, permissões e compatibilidade do arquivo. A importação pode ter aplicado alterações parciais.')));});done.catch(()=>{});

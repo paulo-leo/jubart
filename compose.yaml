@@ -139,7 +139,8 @@ services:
       - ./docker/traefik:/etc/traefik/dynamic:ro
       - traefik_acme:/letsencrypt
     networks:
-      - proxy
+      proxy:
+        ipv4_address: ${JUBART_TRAEFIK_IPV4:-}
 
   php:
     mem_limit: ${CONTAINER_MEMORY_PHP:-0}

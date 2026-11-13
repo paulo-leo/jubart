@@ -2652,17 +2652,13 @@ Os servidores guardam hashes; senhas anteriores não podem ser recuperadas. **Ve
 
 Preserve **o cofre e a chave** em backup protegido fora da VPS. Não publique esses arquivos. Trocar ou perder a chave impede a leitura das credenciais já salvas; não há migração automática de chave. Um dump SQL não substitui esse backup. Em uma instalação nova, o cofre é criado quando a primeira senha é definida.
 
-Alterar a senha no painel não atualiza clientes automaticamente. Atualize o `.env` da aplicação correspondente, recrie o serviço PHP que recebe essa credencial e, se o Laravel utiliza configuração em cache, reconstrua esse cache. Para a aplicação principal que recebe `DB_PASSWORD` da infraestrutura:
+Ao redefinir a senha em **Dados → Usuários**, o painel atualiza a conta no SGBD, o cofre e as conexões salvas dessa conta. No MariaDB, a sincronização automática considera a conta de rede com host `%`; contas com host específico não são confundidas com ela. Em **Dados → Conexões**, editar a senha muda apenas a credencial do cliente, não a senha real no banco.
 
-```bash
-# Depois de atualizar a senha real no banco e DB_PASSWORD no .env da infra:
-sudo docker compose up -d --no-deps --force-recreate php
-sudo docker compose exec php php artisan config:clear
-# Em produção, após validar as variáveis:
-sudo docker compose exec php php artisan config:cache
-```
+Para contas MariaDB vinculadas a `DB_USERNAME` ou `APP_n_DB_USERNAME`, a redefinição também atualiza `DB_PASSWORD` / `APP_n_DB_PASSWORD` no **`.env` da infraestrutura**, preservando as demais configurações. Antes de alterar o banco, o painel valida o Compose com a nova configuração. Após alterar, recria somente os serviços PHP, workers e Scheduler já em execução que usam a conta e a senha anterior; bancos, volumes e serviços parados não são recriados/iniciados. Em serviços PHP com `artisan`, executa `php artisan config:clear`. A confirmação informa a breve interrupção. Para sincronização no `.env`, use senha sem aspas simples; cifrão é preservado literalmente.
 
-Atualize também workers/Scheduler e outras aplicações que usem essa conta. Para serviços adicionais, use `php-app2`/`php-app3`, conforme o projeto. Senhas administrativas não são alteradas nessa guia: editar apenas `POSTGRES_PASSWORD` ou `DB_ROOT_PASSWORD` no `.env` não muda a senha existente no banco. Siga a manutenção interativa da conta antes de recriar clientes.
+O `.env` anterior fica em `.panel-state/database-password-sync/env-before` (privado, não versionado). Uma falha depois de alterar a conta é informada como sincronização incompleta: banco, arquivos e recriação não formam uma transação única. Revise as credenciais e conclua a recriação antes de repetir a troca.
+
+**Limites:** arquivos `.env` dos projetos, aplicações Node, clientes externos, contas MariaDB com host específico e overrides personalizados não são reescritos automaticamente. No PostgreSQL, conexões salvas da conta são atualizadas; a configuração dos clientes permanece sob responsabilidade da aplicação. Senhas administrativas não são alteradas nessa guia: editar apenas `POSTGRES_PASSWORD` ou `DB_ROOT_PASSWORD` no `.env` não muda a senha existente no banco. Após validar as configurações Laravel, pode-se reconstruir o cache com `docker compose exec php php artisan config:cache`.
 
 **Bloquear login** impede novas conexões, mas não encerra sessões abertas. Revogar concessões diretas não elimina privilégios herdados de roles, `PUBLIC`, privilégios globais ou de proprietário. No PostgreSQL, as concessões do painel cobrem o schema `public`, tabelas/sequências existentes e privilégios padrão para objetos futuros criados pelo administrador usado pelo painel; objetos criados por outras roles exigem configuração própria. Leitura/escrita não transfere propriedade e não garante execução de toda migração Laravel. Conceder somente leitura não reduz permissões de escrita já existentes: revogue-as antes e confira os acessos herdados. Os comandos são enviados por entrada padrão ao cliente SQL, sem colocar senhas nas linhas de comando.
 
@@ -4029,6 +4025,12 @@ Instalou a infraestrutura e não sabe onde entrar? O endereço `localhost` da su
 - [Diagnosticar problemas de acesso](#diagnosticar-acesso)
 
 <a id="acesso-privado-tunel"></a>
+### Proxy confiável do Laravel
+
+Em **Integrações → Como acessar → Proxy confiável para Laravel**, o painel consulta os containers em execução e mostra o IP atual do Traefik nas redes compartilhadas com cada aplicação PHP. **Copiar variável** gera `TRUSTED_PROXIES=IP_ATUAL` (ou uma lista de IPs exatos, incluindo IPv6 quando disponível). A consulta é atualizada periodicamente e pelo botão **Atualizar IP do proxy**; não usa o IP público do domínio nem o IP do container PHP. Se não houver dados válidos ou os serviços estiverem parados, não sugere um valor.
+
+O endereço pode mudar quando o Traefik for recriado. Confira esta informação após alterações na infraestrutura, atualize manualmente o `.env` da aplicação Laravel e execute `php artisan config:clear` e `php artisan config:cache` dentro do container da aplicação. O painel não escreve essa variável automaticamente, não configura o middleware Laravel e não garante que uma instalação com proxy intermediário use o Traefik como peer imediato: nesse caso, confirme o `REMOTE_ADDR` recebido pelo PHP. Não substitua a lista por `*` ou por toda a rede Docker. Para disponibilizar a tela após atualizar o código, reconstrua somente o painel com `docker compose up -d --build --no-deps panel`.
+
 ### Opção 1 — túnel SSH, sem publicar a porta do painel
 
 No `.env` **da infraestrutura na VPS**, para uma instalação que usará HTTP somente dentro do túnel:
@@ -4550,6 +4552,8 @@ Na importação de plugins, ajuste as portas na seção **Portas do plugin** ant
 
 Em **Processos → Mercure**, clique em **Configurar**, ative o switch e use **Salvar e aplicar**. O recurso vem desativado por padrão. A aplicação deve estar habilitada e as redes `app` e `proxy` devem existir. As origens permitidas incluem protocolo e porta, quando necessária, como `http://localhost:5173` ou `https://app.exemplo.com`; não são aceitos curingas. Assinantes anônimos ficam desativados por padrão e, quando autorizados, recebem apenas eventos públicos.
 
+O botão **Como integrar** abre um guia em duas abas: **1. Backend**, com as variáveis de ambiente e os passos para publicar eventos e autorizar usuários; e **2. Frontend**, com a URL pública, conexão, renovação da autorização e verificação do recebimento. Exemplos completos de PHP, estrutura JWT, uso de EventSource e detalhes de cookies ficam em seções expansíveis. Os exemplos respeitam o protocolo detectado no hub. As chaves reais continuam disponíveis somente pela ação separada **Chaves**, com confirmação e auditoria; o guia mostra apenas os campos que precisam ser preenchidos no backend.
+
 Cada aplicação possui um hub separado usando o módulo Mercure da imagem FrankenPHP já fixada na infraestrutura. O hub não monta o código da aplicação e funciona tanto com PHP tradicional quanto com Octane. A ativação valida a configuração no binário da imagem antes de publicar a rota. O painel tenta a configuração moderna e, se necessário, valida a configuração legada; a interface informa **Mercure 1.0** ou **Mercure 0.x** conforme o formato aceito. A detecção não atualiza imagens nem instala bibliotecas na aplicação. Falha de inicialização mantém o cadastro pendente e a rota desativada.
 
 O endereço público é `http(s)://DOMINIO:PORTA/.well-known/mercure`, passando pelo Traefik e pela política de segurança da aplicação, sem portas públicas adicionais. A rota tem prioridade própria e envio imediato do fluxo SSE; não usa a interceptação de páginas de erro nem compressão do PHP. O domínio e o HTTPS acompanham as configurações da aplicação. Depois de mudar domínio, porta, HTTPS ou imagem FrankenPHP, aplique novamente o Mercure. Aplicar a configuração global retira rotas de hubs incompatíveis/pendentes; desativar ou remover a aplicação também encerra seu hub.
@@ -4587,3 +4591,7 @@ Depois dessa atualização, as próximas recompilações podem ser iniciadas pel
 Na mesma tela **Administração → Manutenção do painel**, **Iniciar serviços** executa o equivalente a `docker compose up -d --build`. Use após salvar/aplicar os apontamentos no assistente de configuração. O comando respeita os perfis ativos de `COMPOSE_PROFILES`: serviços opcionais desabilitados não são ativados por esse botão. Plugins e hubs Mercure em projetos separados continuam com sua administração própria. Serviços existentes podem ser recriados, inclusive o painel, encerrando conexões e a sessão. Volumes são preservados. A ação usa o mesmo executor restrito e a configuração privada congelada da manutenção do painel; consultas e transferências em andamento impedem o início.
 
 A conclusão confirma os serviços habilitados em execução e os healthchecks disponíveis aprovados. Um serviço sem healthcheck em execução não comprova funcionamento de todas as rotas. Falhas podem deixar parte dos serviços iniciada: veja a saída e corrija os apontamentos antes de tentar novamente. Durante o processo, a tela mostra andamento sem percentual artificial. Se o painel reiniciar, entre novamente e consulte **Última operação**. Essa ação substitui a etapa manual de subir os demais serviços após `./install.sh`.
+
+### IP fixo do Traefik
+
+Instalações novas pelo instalador oficial reservam automaticamente um IPv4 para o Traefik, fora da faixa dinâmica. Instalações existentes mantêm a rede atual e oferecem uma migração explícita em **Integrações → Como acessar → IP fixo do Traefik**. Consulte o [procedimento de instalação, migração e rollback](docs/proxy-network.md) antes de aplicar na VPS.

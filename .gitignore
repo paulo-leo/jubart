@@ -41,3 +41,5 @@ config/apps.server-staged.yaml
 
 # Backup privado de reescrita do histórico; nunca publicar.
 /.git-publication-backup/
+
+/config/proxy-network.compose.yaml

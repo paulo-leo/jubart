@@ -1,3 +1,4 @@
+import {preparePasswordSync} from './database-password-sync.mjs';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { parseEnv, atomicWrite, databaseEnabled } from './core.mjs';
@@ -32,7 +33,7 @@ export function validateBackup(config,root) {
   for(const key of backupFields)if(config[key]!==undefined&&(/[\x00-\x1f'\\$]/.test(String(config[key]))))throw new Error('Configuração contém caracteres não suportados.');
   return config;
 }
-export function createDatabaseAPI({root,compose,readEnv,startOperation}){
+export function createDatabaseAPI({root,compose,readEnv,startOperation,composeConfig=async()=>({services:{}}),syncConnections=async()=>{}}){
   const vault=createVault(root,readEnv);
   const backupService=engine=>engine==='mariadb'?'backup':'backup-postgres';
   async function sql(engine,query){
@@ -99,8 +100,10 @@ export function createDatabaseAPI({root,compose,readEnv,startOperation}){
     else query=accessSQL(engine,user,host,data.database,data.permission||'readwrite',action==='revoke');
     return {status:202,body:{operation:startOperation(`${action} · ${engine}`,async()=>{
       if(action!=='create-user')await verifyUser(engine,user,host);
+      const synchronize=action==='password'?await preparePasswordSync({root,readEnv,compose,composeConfig,engine,user,host,password}):null;
       await sql(engine,query);
       if(password)await vault.save(engine,user,host,password);
+      if(synchronize){try{await syncConnections({engine,user,host,password});await synchronize();}catch{throw new Error('A senha foi alterada no banco, mas a sincronização das conexões/aplicações não foi concluída. Confira o .env e recrie os serviços afetados; não repita a troca sem revisar.');}}
     })}};
   }
   return {handle};

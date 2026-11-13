@@ -1,3 +1,4 @@
+import {createProxyNetwork,proxyComposeArgs} from './proxy-network.mjs';
 import {createPanelMaintenance} from './panel-maintenance.mjs';
 import {createMercure} from './mercure.mjs';
 import {createPlugins} from './plugins.mjs';
@@ -83,7 +84,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
     try { return (await executor('docker', args, { cwd: root, timeout: 120000, maxBuffer: 2 * 1024 * 1024, ...options })).stdout; }
     catch (error) { throw new Error(await clean(String(error.stderr || error.message || 'Falha ao acessar Docker.').slice(-12000))); }
   }
-  const compose = (args, envPath, options = {}) => docker(['compose', '--project-directory', root, '--env-file', envPath || envFile, '-f', path.join(root, 'compose.yaml'), '-f', path.join(root, 'config/automation.compose.json'), '-f', options.runtimeFile || path.join(root,'config/apps.compose.yaml'), ...args], options);
+  const compose = (args, envPath, options = {}) => docker(['compose', '--project-directory', root, '--env-file', envPath || envFile, '-f', path.join(root, 'compose.yaml'), '-f', path.join(root, 'config/automation.compose.json'), '-f', options.runtimeFile || path.join(root,'config/apps.compose.yaml'), ...proxyComposeArgs(root), ...args], options);
   async function loadConfig() {
     await fs.mkdir(path.dirname(configFile), { recursive: true });
     let text;
@@ -112,7 +113,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
     const services = Object.entries(definition.services).filter(([name]) => !name.startsWith('node')).map(([name, def]) => {
       const list = containers.filter(c => c.Config?.Labels?.['com.docker.compose.service'] === name && c.Config?.Labels?.['com.docker.compose.oneoff']?.toLowerCase() !== 'true');
       const c = list[0];
-      return { name, profiles: def.profiles || [], container: c?.Name?.replace(/^\//, '') || null, state: c?.State?.Status || 'not_created', health: c?.State?.Health?.Status || null, image: def.image || `${project}-${name}`, containerId: c?.Id?.slice(0, 12) || null, createdAt: c?.Created || null, startedAt: c?.State?.StartedAt || null, finishedAt: c?.State?.FinishedAt || null, exitCode: c?.State?.ExitCode ?? null, restartCount: c?.RestartCount || 0, workingDir: c?.Config?.WorkingDir || def.working_dir || '/', ports: Object.entries(c?.NetworkSettings?.Ports || {}).flatMap(([port, bindings]) => (bindings || []).map(b => `${b.HostIp}:${b.HostPort} → ${port}`)), mounts: (c?.Mounts || []).map(m => ({ type: m.Type, source: m.Source, target: m.Destination, writable: m.RW })), restartPolicy:c?.HostConfig?.RestartPolicy?.Name||def.restart||'no', protected: name === 'panel', automation: /^(worker|scheduler)-/.test(name) };
+      return { name, profiles: def.profiles || [], container: c?.Name?.replace(/^\//, '') || null, state: c?.State?.Status || 'not_created', health: c?.State?.Health?.Status || null, image: def.image || `${project}-${name}`, containerId: c?.Id?.slice(0, 12) || null, createdAt: c?.Created || null, startedAt: c?.State?.StartedAt || null, finishedAt: c?.State?.FinishedAt || null, exitCode: c?.State?.ExitCode ?? null, restartCount: c?.RestartCount || 0, workingDir: c?.Config?.WorkingDir || def.working_dir || '/', networks:Object.entries(c?.NetworkSettings?.Networks||{}).map(([name,n])=>({name,ipv4:n.IPAddress||null,ipv6:n.GlobalIPv6Address||null})), ports: Object.entries(c?.NetworkSettings?.Ports || {}).flatMap(([port, bindings]) => (bindings || []).map(b => `${b.HostIp}:${b.HostPort} → ${port}`)), mounts: (c?.Mounts || []).map(m => ({ type: m.Type, source: m.Source, target: m.Destination, writable: m.RW })), restartPolicy:c?.HostConfig?.RestartPolicy?.Name||def.restart||'no', protected: name === 'panel', automation: /^(worker|scheduler)-/.test(name) };
     });
     const names = (await docker(['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`])).trim().split(/\s+/).filter(Boolean);
     const volumes = names.length ? JSON.parse(await docker(['volume', 'inspect', ...names])).map(v => ({ name: v.Name, driver: v.Driver, mountpoint: v.Mountpoint, created: v.CreatedAt })) : [];
@@ -140,11 +141,12 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const configurationTransfer=createConfigurationTransfer({root,readEnv,loadConfig,audit:event=>panelUsers.audit(event)});
   const certificates=createCertificates({root,readEnv,loadConfig,composeConfig,docker,compose,startOperation,audit:event=>panelUsers.audit(event)});
   const serverSettings=createServerSettings({root,readEnv,compose,loadConfig,startOperation,audit:event=>panelUsers.audit(event)});
+  const proxyNetwork=createProxyNetwork({root,readEnv,composeConfig,compose,docker,startOperation,audit:event=>panelUsers.audit(event)});
   const pmaSettings=createPMASettings({root,readEnv,compose,startOperation,audit:event=>panelUsers.audit(event)});
   const serviceAccess=createServiceAccess({root,readEnv,loadConfig,compose,docker,composeConfig,startOperation,audit:event=>panelUsers.audit(event)});
   const mercure=createMercure({root,readEnv,loadConfig,composeConfig,docker,startOperation,audit:event=>panelUsers.audit(event)});
   const websockets=createWebsockets({root,readEnv,loadConfig,compose,composeConfig,startOperation,audit:event=>panelUsers.audit(event),serviceLogs});
-  const databases = createDatabaseAPI({ root, compose, readEnv, startOperation });
+  const databases = createDatabaseAPI({ root, compose, readEnv, startOperation, composeConfig, syncConnections:data=>databaseConnections.syncPassword(data) });
   const sqlConsole=createSQLConsole({root,readEnv,databases,audit:event=>panelUsers.audit(event),runner:sqlRunner,canExecute:()=>!panelMaintenance.isRunning()});
   const databaseConnections=createDatabaseConnections({root,readEnv,discoverDefaults:defaultConnectionDiscovery({root,readEnv,databases}),testConnection:(engine,data,actor)=>sqlConsole.connect(engine,data,actor),audit:event=>panelUsers.audit(event)});
   const automation = createAutomationAPI({ root, compose, loadConfig, readEnv, clean, startOperation, serviceLogs });
@@ -245,7 +247,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           const result=await phpAPI.handle(url.pathname,req.method,req.method==='GET'?{}:await body(req));
           return send(res,result?.status||404,result?.body||{error:'Operação PHP desconhecida.'});
         }
-        if(url.pathname==='/api/operation-preview'&&req.method==='POST'){const payload=await body(req);if(typeof payload.route!=='string'||!payload.route.startsWith('/'))return send(res,400,{error:'Operação inválida.'});if(payload.route==='/panel-maintenance/start-services')return send(res,200,panelMaintenance.confirmation('services'));if(payload.route==='/panel-maintenance/rebuild')return send(res,200,panelMaintenance.confirmation());const mercurePlan=payload.route.match(/^\/mercure\/(main|app[0-9]+)\/apply$/);if(mercurePlan)return send(res,200,await mercure.confirmation(mercurePlan[1],payload.data||{}));if(payload.route.startsWith('/plugins/'))return send(res,200,await plugins.confirmation(payload.route,payload.data||{}));return send(res,200,await operationPreview({root,route:payload.route,data:payload.data||{},config:(await loadConfig()).config,compose}));}
+        if(url.pathname==='/api/operation-preview'&&req.method==='POST'){const payload=await body(req);if(typeof payload.route!=='string'||!payload.route.startsWith('/'))return send(res,400,{error:'Operação inválida.'});if(['/proxy-network/apply','/proxy-network/rollback'].includes(payload.route))return send(res,200,await proxyNetwork.confirmation(payload.data||{},payload.route.endsWith('/rollback')));if(payload.route==='/panel-maintenance/start-services')return send(res,200,panelMaintenance.confirmation('services'));if(payload.route==='/panel-maintenance/rebuild')return send(res,200,panelMaintenance.confirmation());const mercurePlan=payload.route.match(/^\/mercure\/(main|app[0-9]+)\/apply$/);if(mercurePlan)return send(res,200,await mercure.confirmation(mercurePlan[1],payload.data||{}));if(payload.route.startsWith('/plugins/'))return send(res,200,await plugins.confirmation(payload.route,payload.data||{}));return send(res,200,await operationPreview({root,route:payload.route,data:payload.data||{},config:(await loadConfig()).config,compose}));}
         if(url.pathname==='/api/security/password'&&req.method==='POST'){
           if(principal.id!=='bootstrap')return send(res,403,{error:'Entre com a conta administradora do .env para trocar sua senha.'});
           const data=await body(req);const check=await loginProtection.attempt(req,async()=>{if(!await panelPassword.verify(data.currentPassword))return null;await panelPassword.change(data,actor);for(const [id,entry]of sessions)if(entry.userId==='bootstrap'){sessions.delete(id);await terminals.closeOwner(id);}return principal;});
@@ -272,7 +274,10 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if(url.pathname==='/api/certificates'&&req.method==='GET')return send(res,200,await certificates.read());
         if(url.pathname==='/api/certificates/recheck'&&req.method==='POST')return send(res,202,await certificates.check(actor));
         if(url.pathname==='/api/certificates/inspect'&&req.method==='POST')return send(res,200,await certificates.inspect((await body(req)).id));
-        if(url.pathname==='/api/connection-guide'&&req.method==='GET'){const status=await snapshot();return send(res,200,connectionInfo(await readEnv(),status.services));}
+        if(url.pathname==='/api/proxy-network'&&req.method==='GET')return send(res,200,await proxyNetwork.read());
+        if(url.pathname==='/api/proxy-network/apply'&&req.method==='POST')return send(res,202,await proxyNetwork.apply(await body(req),actor));
+        if(url.pathname==='/api/proxy-network/rollback'&&req.method==='POST')return send(res,202,await proxyNetwork.rollback(await body(req),actor));
+        if(url.pathname==='/api/connection-guide'&&req.method==='GET'){const status=await snapshot();return send(res,200,connectionInfo(await readEnv(),status.services,(await loadConfig()).config.applications));}
         if(url.pathname==='/api/panel-links'&&req.method==='GET')return send(res,200,await panelLinks.read());
         if(url.pathname==='/api/panel-links/preview'&&req.method==='POST'){const data=decodePanelShare((await body(req)).token);return send(res,200,{name:data.name,url:data.url,expiresAt:data.expiresAt});}
         if(url.pathname==='/api/panel-links/issue'&&req.method==='POST')return send(res,200,await panelLinks.issue(await body(req),actor));
@@ -480,7 +485,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           let stdout = '', stderr = '', exitCode = 0, timedOut = false;
           terminalBusy = true;
           try {
-            const result = await executor('docker', ['compose', '--project-directory', root, '--env-file', envFile, '-f', path.join(root, 'compose.yaml'), '-f', path.join(root, 'config/automation.compose.json'), '-f', path.join(root,'config/apps.compose.yaml'), '--profile', '*', 'exec', '-T', service, 'sh', '-c', 'command -v timeout >/dev/null 2>&1 || { echo "A imagem precisa do utilitário timeout para usar o console." >&2; exit 125; }; exec timeout -k 2s 25s "$1" -lc "$2"', '--', data.shell, data.command], { cwd: root, timeout: 30000, maxBuffer: 512 * 1024, killSignal: 'SIGTERM' });
+            const result = await executor('docker', ['compose', '--project-directory', root, '--env-file', envFile, '-f', path.join(root, 'compose.yaml'), '-f', path.join(root, 'config/automation.compose.json'), '-f', path.join(root,'config/apps.compose.yaml'), ...proxyComposeArgs(root), '--profile', '*', 'exec', '-T', service, 'sh', '-c', 'command -v timeout >/dev/null 2>&1 || { echo "A imagem precisa do utilitário timeout para usar o console." >&2; exit 125; }; exec timeout -k 2s 25s "$1" -lc "$2"', '--', data.shell, data.command], { cwd: root, timeout: 30000, maxBuffer: 512 * 1024, killSignal: 'SIGTERM' });
             stdout = result.stdout || ''; stderr = result.stderr || '';
           } catch (error) { stdout = error.stdout || ''; stderr = error.stderr || error.message; exitCode = Number.isInteger(error.code) ? error.code : 1; timedOut = !!error.killed || exitCode === 124 || exitCode === 137; }
           finally { terminalBusy = false; }

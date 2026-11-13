@@ -238,15 +238,24 @@ class JubartTest(unittest.TestCase):
         binary = fake_bin / 'docker'
         binary.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$JUBART_TEST_LOG"\ncase "$*" in *"ps --all"*) echo "[]";; esac\n')
         binary.chmod(0o755)
+        socket = self.root / 'docker.sock'
+        socket.touch()
+        fake_ip = fake_bin / 'ip'
+        fake_ip.write_text('#!/bin/sh\necho \"[]\"\n')
+        fake_ip.chmod(0o755)
         installed = self.root / 'installed-bin'
         installed.mkdir()
         log = self.root / 'calls.log'
-        env = {**os.environ, 'PATH':str(fake_bin)+':'+os.environ['PATH'], 'JUBART_TEST_LOG':str(log)}
+        env = {**os.environ, 'PATH':str(fake_bin)+':'+os.environ['PATH'], 'JUBART_TEST_LOG':str(log), 'DOCKER_HOST':'unix://'+str(socket)}
+        env.pop('DOCKER_CONTEXT', None)
         result = subprocess.run(['sh', str(self.root / 'install.sh'), '--bin-dir', str(installed), '--non-interactive'], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((installed / 'jubart').resolve(), self.root / 'jubart')
         calls = log.read_text()
         self.assertIn('node scripts/initialize-local.mjs', calls)
+        self.assertIn('--network none', calls)
+        self.assertIn('JUBART_PROXY_AUTOINIT=true', calls)
+        self.assertIn(str(socket)+':/var/run/docker.sock', calls)
         self.assertIn('compose up -d --build --no-deps panel', calls)
         self.assertIn('buildx version', calls)
         self.assertIn('test -s /etc/ssl/certs/ca-certificates.crt', calls)
