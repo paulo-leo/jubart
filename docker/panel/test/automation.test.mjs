@@ -12,6 +12,9 @@ test('gera workers isolados do servidor HTTP e desabilitados por padrão', () =>
   assert.ok(service.command.includes('--queue=emails'));
   assert.equal(service.stop_grace_period, '90s');
   assert.equal(service.ports, undefined);
+  assert.deepEqual(service.healthcheck, {test:['NONE']});
+  config.schedulers.push({id:'scheduler-112233445566',app:'main',enabled:false});
+  assert.deepEqual(automationCompose(config).services['scheduler-112233445566'].healthcheck, {test:['NONE']});
 });
 test('herda diretório e banco corretos de outra aplicação sem gravar credenciais', () => {
   const config = emptyAutomation(), item = worker(); item.app = 'app2'; item.enabled = true; config.workers.push(item);

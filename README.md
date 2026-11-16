@@ -3252,6 +3252,9 @@ As mudanças de configuração não exigem rebuild das imagens. A recriação en
 
 Ao acessar via HTTPS, use `PANEL_COOKIE_SECURE=true`. Ao usar HTTP local ou túnel para HTTP, use `false`. Cookie seguro não funciona por HTTP. Se alterar a porta interna do host em `PANEL_PORT`, atualize também o destino do túnel.
 
+Se uma versão anterior mostrar **“Não foi possível exibir o painel”** após logout ou outra ação ao acessar um IP por HTTP, confira no console do navegador o erro `crypto.randomUUID is not a function`. A geração dos identificadores das notificações agora tem uma alternativa para HTTP; esses identificadores servem somente à interface e não são tokens de segurança. Após atualizar o código, reconstrua somente o painel com `docker compose up -d --build --no-deps panel` e recarregue a página. O teste local `JUBART_HTTP_REGRESSION=1 CHROMIUM_BINARY=/caminho/do/chromium node docker/panel/test/browser-qa.mjs` reproduz uma origem HTTP real, com Docker simulado, e verifica cancelamento, logout, novo login e notificações de ações confirmadas.
+
+
 #### Portas e regras de acesso
 
 - **SSH (TCP 22 por padrão):** necessário para manutenção e túnel. Se usar outra porta, ajuste o comando e o firewall; preserve uma sessão SSH aberta ao alterar regras.

@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+const insecureHTTP=process.env.JUBART_HTTP_REGRESSION==='1';
 const browserBinary=process.env.CHROMIUM_BINARY||'/usr/bin/chromium';
 await fs.access(browserBinary).catch(()=>{throw new Error('Instale Chromium open source ou defina CHROMIUM_BINARY para seu executável Chromium.');});
 const root = await fs.mkdtemp('/tmp/infra-panel-preview-');
@@ -56,7 +57,7 @@ const terminalEngine={async open(){terminalExecutions++;let output,exit;return {
 const server=createPanel({terminalEngine,metricsFetcher,root,username:'paulo',password:'preview-password-only',terminalEnabled:true,transferRunner:async({job,output,onBytes})=>{if(job.kind==='export'){await fs.writeFile(output,'CREATE TABLE sample(id int);');onBytes(28);}},executor:mock});
 server.listen(0,'127.0.0.1'); await once(server,'listening');
 const profile=await fs.mkdtemp('/tmp/infra-panel-chromium-');
-const chrome=spawn(browserBinary,['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-port=9227','--user-data-dir='+profile,'--window-size=1440,1050','about:blank'],{stdio:'ignore'});
+const chrome=spawn(browserBinary,[...(insecureHTTP?['--host-resolver-rules=MAP jubart.test 127.0.0.1','--no-proxy-server']:[]),'--headless','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-port=9227','--user-data-dir='+profile,'--window-size=1440,1050','about:blank'],{stdio:'ignore'});
 let socket;
 try{
  let pages;
@@ -64,7 +65,7 @@ try{
  if(!pages) throw new Error('Chromium não iniciou');
  socket=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl); await once(socket,'open');
  let id=0;const pending=new Map();const browserErrors=[];
- socket.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.id){const p=pending.get(data.id);pending.delete(data.id);if(data.error)p.reject(new Error(data.error.message));else p.resolve(data.result);}else if(data.method==='Runtime.exceptionThrown')browserErrors.push(data.params.exceptionDetails.exception?.description || data.params.exceptionDetails.text);});
+ socket.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.id){const p=pending.get(data.id);pending.delete(data.id);if(data.error)p.reject(new Error(data.error.message));else p.resolve(data.result);}else if(insecureHTTP&&data.method==='Runtime.consoleAPICalled'&&data.params.type==='error')browserErrors.push(data.params.args.map(a=>a.description||a.value||'').join(' '));else if(data.method==='Runtime.exceptionThrown')browserErrors.push(data.params.exceptionDetails.exception?.description || data.params.exceptionDetails.text);});
  const command=(method,params={})=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});socket.send(JSON.stringify({id:n,method,params}));});
  const evaluate=async expression=>{const r=await command('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value;};
  async function approve(){for(let i=0;i<60;i++){if(await evaluate('document.querySelector("#confirm-dialog")?.open'))break;await new Promise(r=>setTimeout(r,50));}if(!await evaluate('document.querySelector("#confirm-dialog")?.open'))throw new Error('Confirmação esperada não abriu');if(!await evaluate('document.querySelector("#confirm-review").textContent.includes("Comandos e operações previstos")'))throw new Error('Comandos ausentes');if(!await evaluate('document.querySelector("#confirm-review").textContent.includes("Possíveis impactos")'))throw new Error('Resumo de impactos ausente');await evaluate('document.querySelector("#confirm-accept").click()');await new Promise(r=>setTimeout(r,60));}
@@ -73,11 +74,25 @@ try{
  const set=async(selector,value)=>evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});const proto=el.tagName==='SELECT'?HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
  const click=async selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
  const tab=async id=>{await click(`[data-tab=${id}]`);await new Promise(r=>setTimeout(r,150));};
- await command('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/`});
+ await command('Page.navigate',{url:`http://${insecureHTTP?'jubart.test':'127.0.0.1'}:${server.address().port}/`});
  await wait('!!document.querySelector("#login-form")','Login React não abriu');
  await set('[name=username]','paulo');await set('[name=password]','preview-password-only');
  await evaluate('document.querySelector("#login-form").requestSubmit()');
  await wait('!!document.querySelector("[data-hub-tab=services]")','Central de aplicativos não carregou');
+ if(insecureHTTP){
+  if(await evaluate('window.isSecureContext||typeof crypto.randomUUID!=="undefined"'))throw new Error('O teste exige HTTP sem crypto.randomUUID');
+  await click('#profile-menu summary');await click('#logout');await wait('!!document.querySelector("#confirm-dialog")');await click('#confirm-cancel');await wait('!document.querySelector("#confirm-dialog")');
+  if(!await evaluate('!!document.querySelector("#dashboard")'))throw new Error('Cancelar logout encerrou a sessão');
+  await click('#logout');await approve();
+  try{await wait('!!document.querySelector("#login-form")','Logout não voltou ao login');}catch(error){throw new Error(browserErrors.join('; ')||error.message);}
+  await set('[name=username]','paulo');await set('[name=password]','preview-password-only');await evaluate('document.querySelector("#login-form").requestSubmit()');await wait('!!document.querySelector("#dashboard")');
+  await tab('services');await wait('document.querySelectorAll("#services tr").length===9');
+  await click('[data-service=backup][data-service-action=stop]');await approve();await wait('!!document.querySelector(".jubart-notice")');
+  if(stopCalls!==1)throw new Error('A ação confirmada não foi executada exatamente uma vez');
+  if(await evaluate('document.body.textContent.includes("Não foi possível exibir o painel")'))throw new Error('ErrorBoundary acionado');
+  if(browserErrors.length)throw new Error(browserErrors.join('; '));
+  console.log('HTTP regression OK: origem insegura real, cancelar/logout/login e ação confirmada com notificação, sem falhas React. Docker simulado.');
+ }else{
  await click('[data-hub-tab=services]');
  await wait('document.querySelectorAll("#services tr").length===9','Serviços React não carregaram');
  await click('#profile-menu summary');await wait('document.querySelector("#profile-menu").open');
@@ -152,4 +167,5 @@ try{
  await click('#profile-menu summary');await click('#logout');await approve();await wait('!!document.querySelector("#login-form")');await set('[name=username]','observer');await set('[name=password]',restrictedPassword);await evaluate('document.querySelector("#login-form").requestSubmit()');await wait('!!document.querySelector("#authorized-services")');if(await evaluate('!!document.querySelector("[data-tab=apps]")||!!document.querySelector("#panel-user-create")'))throw new Error('Área administrativa carregada no perfil restrito');
  if(browserErrors.length)throw new Error(browserErrors.join('; '));
  console.log('React QA: 34 páginas em React com submenus, dicas, geração de senha e editor maximizado, Bootstrap 6, login, filtros preservados, loading fixo sem deslocamento, confirmações cancelar/aceitar, terminal, .env, cadastro de fila, seleção de SGBD, backups, PHP/INI/extensões, métricas, temas e tablet/mobile. Operações Docker simuladas.');
+ }
 }finally{socket?.close();chrome.kill();server.closeAllConnections();await new Promise(r=>server.close(r));await fs.rm(root,{recursive:true,force:true});}
