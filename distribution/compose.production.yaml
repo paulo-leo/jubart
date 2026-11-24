@@ -1,0 +1,6 @@
+# Copie para a raiz da instalação e inclua em COMPOSE_FILE após compose.yaml.
+# Requer Docker Compose com suporte à tag !reset.
+services:
+  panel:
+    image: ${JUBART_IMAGE:-paulo2021/jubart:1.1.0}
+    build: !reset null

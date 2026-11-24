@@ -355,31 +355,185 @@ jubart panel
 jubart panel --host 203.0.113.10 --ssh-user ubuntu --ssh-port 22
 jubart status
 jubart health
+jubart users
+jubart certificates
+jubart time
 ```
 
 | Comando | Resultado |
 | --- | --- |
-| `jubart` | Baleia da marca em arte de terminal, versão, crédito do desenvolvedor, acesso configurado e estado dos containers |
+| `jubart` | Console interativo com baleia da marca, versão, crédito do desenvolvedor e comandos rápidos |
 | `jubart help` | Lista de comandos; use também `jubart COMANDO --help` |
 | `jubart version` / `jubart --version` | Versão do código instalado |
 | `jubart panel` | Modo HTTP/HTTPS, portas e exemplo de túnel SSH para publicação local; consulta também o container |
+| `jubart http` | Atalho para publicar o painel via HTTP por porta, com confirmação; aceita `--port` |
+| `jubart ssh` | Atalho para restringir o painel a `127.0.0.1` e usar túnel SSH, com confirmação |
 | `jubart access` | Consulta como alternar o acesso do painel |
-| `jubart access tunnel` | Publica o painel somente em `127.0.0.1` e mostra o comando SSH |
+| `jubart access tunnel` / `jubart access ssh` | Publica o painel somente em `127.0.0.1` e mostra o comando SSH |
 | `jubart access http` | Publica o painel em `0.0.0.0` via HTTP por porta |
 | `jubart site` | Testa a rota `/` da aplicação `main` na porta HTTP/HTTPS publicada, usando o domínio correto |
 | `jubart site app2` / `jubart site --all` | Testa uma aplicação pelo identificador ou todas as habilitadas |
-| `jubart status` | Estado, healthcheck e portas publicadas dos containers criados |
+| `jubart status` | Tabela com serviço, estado, healthcheck, porta no container e porta/endereço publicados no host |
 | `jubart health` | Verifica todos os serviços habilitados no Compose; retorna código 1 se ausentes, parados, iniciando ou unhealthy |
-| `jubart apps` | Aplicações cadastradas, tipos, domínios e habilitação |
+| `jubart server` | Verifica CPU, RAM, swap, disco da instalação, carga e uptime do host; retorna código 1 se houver atenção ou coleta incompleta |
+| `jubart memory` | Memória usada, limite, percentual e PIDs dos containers desta instalação, além da RAM e swap do host |
+| `jubart monitor` | Monitor ao vivo com gráficos de CPU/RAM do host, rede, consumo dos containers e requisições HTTP do Traefik |
+| `jubart traffic` | Tráfego ao vivo: RX/TX do host e dos containers, requisições HTTP por segundo, latência e respostas acumuladas |
+| `jubart queues` | Tabela com total de jobs, pendentes, reservados, atrasados e estado do worker por fila cadastrada |
+| `jubart workers` | Workers cadastrados, aplicação, fila, conexão, habilitação, estado e nome real do container |
+| `jubart jobs` | Catálogo de jobs cadastrados, com aplicação, nome e classe PHP |
+| `jubart jobs --failed` | Até 30 falhas recentes por aplicação, com ID, conexão, fila e data, sem payloads ou exceções |
+| `jubart schedules` | Agendadores cadastrados, estado dos containers e agenda Laravel (`schedule:list`) |
+| `jubart databases [--engine postgres]` | Lista bancos reais do MariaDB/PostgreSQL, tamanho, proprietário e conexões; não exibe senhas |
+| `jubart database list --engine postgres --database infra` | Filtra o inventário pelo servidor e nome exato do banco |
+| `jubart database users [--engine postgres] [--database infra]` | Lista contas, host, bloqueio do login, perfil administrativo e permissões por banco |
+| `jubart database access --engine postgres [--database infra]` | Mostra endereços internos/configurados e instruções para acesso local, túnel SSH e configuração no painel |
+| `jubart database help` | Exibe todos os comandos e flags de bancos, com descrições em português |
+| `jubart apps` | Tabela com ID, aplicação, tipo, nome real do container consultado no Docker, domínio, estado habilitada/desabilitada, pasta no host (caminho absoluto a partir da raiz da instalação) e comandos `dir`/`exec` de cada aplicação; indica containers não criados ou consulta indisponível. Dentro do console, os atalhos aparecem sem o prefixo `jubart` |
+| `jubart app help` | Todas as ações e flags para gerenciar aplicações; aceita também `jubart app COMANDO --help` |
+| `jubart proxies` ou `jubart proxy list` | Lista hosts de proxy, aplicações, painel e WebSockets, incluindo cadastros desabilitados, com ID, nome, domínios, destino, métodos HTTP e HTTPS |
+| `jubart proxy show` | Consulta todas as configurações de roteamento, redirecionamento, cabeçalho Host, IPs, políticas de segurança e acessos globais; compara os acessos salvos com o `.env` |
+| `jubart proxy show PROXY` | Filtra os detalhes pelo ID, nome completo entre aspas ou domínio, por exemplo `jubart proxy show app2` |
+| `jubart proxy help` | Mostra todos os comandos e opções de consulta dos proxies |
+| `jubart app create [ID] --domain HOST --directory CAMINHO` | Cadastra e aplica uma aplicação; sem ID, escolhe o próximo disponível |
+| `jubart app update ID [FLAGS]` | Altera os campos informados e aplica a aplicação; mostra a revisão antes de pedir `yes` |
+| `jubart app remove ID` | Remove o cadastro e o container, preservando pastas, bancos e volumes; `main` é protegido |
+| `jubart app apply ID` | Aplica um cadastro salvo ou repete a aplicação após uma falha de Docker |
+| `jubart exec APP` | Abre o shell no container pelo ID ou nome completo da aplicação; nomes com espaços precisam de aspas |
+| `jubart dir APP` | Abre Bash na pasta do projeto no host pelo ID ou nome completo da aplicação |
+| `jubart app shell ID` | Abre Bash no container da aplicação, na raiz do projeto (ou pasta de trabalho configurada para Node.js); usa `sh` se a imagem não tiver Bash. Exige um único container em execução |
+| `jubart app host ID` | Abre Bash na pasta cadastrada do projeto no host, sem depender do Docker ou de a aplicação estar habilitada |
+| `jubart users` | Tabela de contas do painel: login, perfil, acesso habilitado/desabilitado e nome; inclui o administrador do `.env`, sem exibir senhas ou hashes |
+| `jubart certificates` | Verifica os certificados servidos pelo proxy HTTPS local para aplicações habilitadas e painel por domínio, conforme o `.env` |
+| `jubart certificates exemplo.com` | Consulta TLS pela rede no domínio informado; aceita `--port` (padrão 443) |
+| `jubart time` | Hora do servidor e UTC, fuso do host, estado NTP e horários nos fusos configurados para serviços e backups |
 | `jubart user` | Login do administrador principal do `.env` |
 | `jubart user NOVO_LOGIN` | Altera esse login e recria somente o painel após confirmação |
 | `jubart password` | Solicita senha atual/nova sem exibi-las, salva e recria o painel após confirmação |
 | `jubart start` | Inicia somente o painel já construído |
 | `jubart restart` | Recria somente o painel, com confirmação, efetivando mudanças de `.env` |
 
+As consultas `proxies` e `proxy show` mostram os encaminhamentos gerenciados pelo Jubart sem alterar arquivos ou containers. `proxy show` inclui portas HTTP/HTTPS, acesso direto do painel/phpMyAdmin/bancos, email ACME, regras de métodos, IPs, horários e limites HTTP quando cadastrados. O cadastro salvo e os valores do `.env` são identificados separadamente; não constituem comprovação de recarga do Traefik ou do estado atual dos containers. Divergências no arquivo gerado dos hosts são indicadas. As consultas não imprimem senhas, chaves ou o `.env` completo. Exigem Node.js no host ou o painel em execução; arquivos privados são consultados pelo container quando necessário, e leituras incompletas são indicadas. No console, use `proxies`, `proxy show`, `proxy show app2` ou `proxy show "Relatórios"`, sem o prefixo `jubart`.
+
 O comando `jubart site` faz uma requisição GET local, com limite de 10 segundos por aplicação, sem imprimir o conteúdo da resposta. Respostas 2xx indicam resposta bem-sucedida; 3xx são informadas como redirecionamento sem seguir o destino; 4xx/5xx, falhas TLS e indisponibilidade retornam código 1. HTTPS preserva a validação do certificado e o domínio TLS. O teste não comprova acesso externo/firewall nem o funcionamento de todas as rotas.
 
-O CLI usa cores e ícones em terminais compatíveis, com seções de acesso, túnel e serviços. A logo e os créditos ficam lado a lado quando há largura disponível. Para desativar cores, use `NO_COLOR=1 jubart`; saídas redirecionadas e terminais `TERM=dumb` não recebem códigos de cor.
+Ao executar apenas `jubart` em um terminal compatível, a tela de boas-vindas abre um console de tela inteira, com cabeçalho, conteúdo e prompt `jubart>` fixo no rodapé. A abertura mostra comandos rápidos sem consultar o Docker. Digite os comandos sem repetir o prefixo `jubart`; a sessão permanece aberta após cada execução:
+
+```text
+jubart> apps
+jubart> status
+jubart> panel
+jubart> app update app2 --domain novo.exemplo.com
+jubart> exec app2
+jubart> dir app2
+jubart> exec "WP ERP - Novo"
+jubart> help
+jubart> exit
+```
+
+Use `app help` para consultar ações e flags, `clear` para limpar a tela e voltar às boas-vindas, e `exit`, `quit`, **Ctrl+D** (na linha vazia) ou **Ctrl+C** para sair. As setas para cima/baixo percorrem o histórico da sessão; use aspas nos nomes e caminhos com espaços. As operações que alteram configurações continuam exigindo a confirmação `yes`. Comandos diretos como `jubart apps` e `jubart status` também continuam disponíveis fora do console.
+
+Os atalhos `exec APP` e `dir APP` aceitam o ID mostrado em `apps`, como `main` ou `app2`, ou o nome completo da aplicação, como `dir "WP ERP - Novo"`. A busca ignora diferenças entre maiúsculas e minúsculas e prioriza o ID; nomes repetidos exigem um ID único. Eles entregam o terminal ao shell interativo; `exit` ou **Ctrl+D** encerra o shell e devolve o prompt do Jubart. Fora do console, use `jubart exec app2` ou `jubart dir app2`: ao sair, você retorna ao terminal original. O shell do host abre na pasta cadastrada, inclusive para aplicações desabilitadas, com o usuário atual. O shell do container mantém o usuário definido no Compose e não cria nem inicia containers automaticamente. A pasta atual do processo Jubart e do terminal original é preservada. As formas anteriores `app shell ID` e `app host ID` continuam disponíveis.
+
+A interface usa a largura e a altura reais do terminal, inclusive ao redimensionar o terminal integrado da IDE. Separadores e tabelas ocupam a largura disponível; textos e células longas quebram em várias linhas. Em janelas muito estreitas, as tabelas viram registros com rótulos para manter todos os campos acessíveis. Use **PgUp/PgDn** para rolar os resultados e **Ctrl+L** para redesenhar a tela, preservando o comando que está digitando. A rolagem também está disponível nas confirmações. Redimensionar redesenha os dados já consultados, sem executar novamente comandos ou operações. As boas-vindas colocam a baleia e os atalhos lado a lado quando há espaço. Sair restaura a tela anterior do terminal. Após atualizar o código, encerre o console aberto com `exit` e execute `jubart` novamente para carregar a nova interface.
+
+Em `status` e `health`, as colunas **Porta no container** e **Porta no host** separam a porta/protocolo internos e o endereço de publicação no servidor. Por exemplo: `3000/tcp` no container e `127.0.0.1:9090` no host. As informações vêm do container criado no Docker, incluindo portas declaradas sem publicação (`não publicada` no host). As portas declaradas não comprovam que um processo esteja escutando. Múltiplos mapeamentos mantêm a mesma ordem nas duas colunas; IPv6 aparece entre colchetes. Se a inspeção falhar, os dados disponíveis no Compose são preservados e a coleta incompleta é indicada. A tabela de serviços não exibe pastas ou volumes; `jubart apps` continua mostrando a pasta de cada aplicação no host.
+
+Para consultar o servidor ou acompanhar recursos e tráfego no console:
+
+```text
+jubart> server
+jubart> memory
+jubart> memory --service php
+jubart> memory --watch
+jubart> monitor
+jubart> traffic --interface eth0 --interval 3
+jubart> traffic --service php
+jubart> monitor --host-only
+jubart> monitor --once
+jubart> monitor --help
+```
+
+`server` e `memory` fazem uma consulta; `--watch` acompanha continuamente. `monitor` e `traffic` acompanham ao vivo por padrão; **q** ou **Ctrl+C** encerra a visualização e devolve o prompt do Jubart. **PgUp/PgDn** percorre os dados que não cabem na janela; redimensionar reorganiza imediatamente a amostra atual, sem antecipar outra coleta. `--once` faz uma consulta com duas amostras para calcular as taxas. Fora do console, use o prefixo, por exemplo `jubart monitor`. Saídas redirecionadas e terminais `TERM=dumb` fazem apenas uma consulta e terminam. O intervalo mínimo é de dois segundos por padrão, ajustável com `--interval` entre 1 e 60; a duração da coleta também conta no intervalo. O histórico conserva até 60 amostras enquanto o comando está aberto.
+
+`server` consulta o host Linux onde o comando executa, sem depender de Docker ou do `.env`. Indica atenção a partir de 90% de CPU/RAM/disco, 80% de swap, carga de um minuto acima do número de CPUs ou leitura indisponível. O disco corresponde ao sistema de arquivos da pasta da instalação. RAM usada é a memória total menos `MemAvailable`, considerando o cache recuperável como disponível. Esses limiares indicam pressão de recursos; `health` continua verificando a execução e os healthchecks dos serviços.
+
+`memory`, `monitor` e `traffic` aceitam `--service NOME`, como `php`, `php-app2` ou `mariadb`, para filtrar os containers pelo serviço Compose. `--host-only` permite consultar o host sem Docker ou painel. Os containers são restritos à instalação atual, e a RAM segue `docker stats`, com CPU individual podendo ultrapassar 100% ao usar vários núcleos. O limite informado é o limite reportado pelo Docker; sem limite explícito, pode corresponder à memória disponível ao daemon. O host local e o host do daemon podem ser máquinas diferentes se você usar um contexto Docker remoto.
+
+Para a rede do host, `monitor` e `traffic` usam as interfaces da rota padrão IPv4; sem elas, procuram interfaces sem loopback/bridges Docker. `--interface` escolhe uma interface específica (substitua `eth0` pelo nome real). RX indica entrada e TX indica saída; os contadores incluem tráfego interno e não comprovam a banda exclusiva da internet. Nos containers, as taxas usam as diferenças dos contadores entre amostras. Reinícios ou quedas na coleta descartam a base anterior; dados ausentes aparecem como `—`.
+
+As métricas HTTP reutilizam o parser do painel e o endpoint interno do Traefik, consultado pelo container `panel`, sem publicar portas adicionais. Mostram tráfego global dos entrypoints `web` e `websecure`, mesmo com `--service`, e precisam do painel/Traefik em execução com métricas habilitadas. Sem novas requisições, a latência fica indisponível. Falhas de coleta aparecem na tela sem substituir dados ausentes por zero; host e containers continuam sendo exibidos quando disponíveis. Todos esses comandos são somente leitura.
+
+Para verificar filas, jobs e Scheduler dentro do console:
+
+```text
+jubart> queues
+jubart> queues --app main --watch
+jubart> queues --app app2 --queue emails --connection redis
+jubart> workers --app app2
+jubart> jobs
+jubart> jobs --failed --app main
+jubart> schedules --app main
+jubart> queues --help
+```
+
+Todos aceitam `--app ID` para filtrar por aplicação, `--watch` para acompanhar e `--interval` de 3 a 60 segundos (padrão 5) para ajustar o intervalo mínimo entre consultas. **q** ou **Ctrl+C** devolve o prompt; entrada/saída redirecionada e `TERM=dumb` fazem uma única consulta. Fora do console, mantenha o prefixo, por exemplo `jubart queues`. Os comandos somente consultam: não registram, iniciam, interrompem, executam ou reenfileiram jobs, nem criam arquivos de configuração quando o cadastro estiver ausente.
+
+`queues` consulta as filas cadastradas no painel pela ponte Laravel existente na imagem PHP. Para uma fila sem cadastro, informe `--app` e `--queue`; `--connection` aceita `redis` ou `database`, com padrão `redis` nessa consulta explícita. Isso não cria um worker nem descobre automaticamente todas as filas do Redis/Valkey. O total é fornecido pelo driver; contagens detalhadas dependem dos métodos disponíveis na versão Laravel. Campos indisponíveis aparecem como `—`, sem confundir falha de conexão com fila vazia.
+
+`workers` mostra apenas os workers cadastrados no Jubart, inclusive desabilitados ou sem container criado. O estado real do container e a habilitação salva são exibidos separadamente. `jobs` mostra o catálogo cadastrado, sem indicar que esses jobs foram executados. `jobs --failed` consulta as falhas recentes nas aplicações PHP habilitadas, mesmo que não tenham jobs cadastrados; a listagem depende do provedor Laravel `database`/`database-uuids` e não constitui histórico de todos os jobs executados. `schedules` lista os agendadores cadastrados e consulta a agenda das aplicações PHP habilitadas, mesmo sem um agendador registrado no Jubart. Uma agenda cadastrada ou um container em execução não comprova que uma tarefa terminou com sucesso.
+
+Cadastros podem ser consultados sem Laravel/Docker, mas contagens, falhas e agenda exigem a aplicação habilitada, preparada e em execução. O estado dos workers/agendadores depende de Docker. As consultas usam os containers da aplicação e dispensam login no painel; elas mantêm as permissões Docker do usuário do host. A agenda oculta os segredos conhecidos dos ambientes da infraestrutura e da aplicação acessível no host. Erros de coleta aparecem na tela e retornam código 1 na consulta única, preservando os dados que puderem ser lidos. Cada `--help` lista as flags com descrições em português.
+
+Para gerenciar aplicações pelo terminal, consulte os IDs em `jubart apps` e use:
+
+```bash
+# Mostrar todas as ações e flags
+jubart app help
+jubart app update --help
+
+# Criar um cadastro para um projeto existente; o ID é escolhido automaticamente
+jubart app create --name "Minha API" --type php --domain api.exemplo.com --directory /srv/projetos/api
+
+# Alterar somente o domínio, somente a pasta ou vários campos
+jubart app update app2 --domain novo.exemplo.com
+jubart app update app2 --directory /srv/projetos/erp
+jubart app update app2 --name "ERP" --domain erp.exemplo.com --port 8000
+
+# Criar Node.js ou site estático
+jubart app create --type node --domain node.exemplo.com --directory /srv/projetos/node --start-command "npm run start" --port 3000
+jubart app create --type static --domain site.exemplo.com --directory /srv/projetos/site --build-directory dist --spa
+
+# Revisar sem gravar; salvar sem aplicar; aplicar depois
+jubart app update app2 --domain novo.exemplo.com --dry-run
+jubart app update app2 --domain novo.exemplo.com --save-only
+jubart app apply app2
+
+# Habilitar, desabilitar ou remover um cadastro
+jubart app update app2 --enable
+jubart app update app2 --disable
+jubart app remove app3
+```
+
+Os nomes dos comandos e das flags são em inglês; as descrições, a ajuda e as mensagens são em português. Use `--domain` para domínio, `--directory` para pasta no host, `--name` para nome, `--type` para tipo, `--port` para porta interna, `--document-root` para raiz pública PHP, `--mode` para modo PHP, `--start-command` para comando Node.js, `--working-directory` para pasta de trabalho e `--build-directory` para pasta do build. `--enable` e `--disable` alteram a habilitação; sites estáticos aceitam `--spa` e `--no-spa`. `jubart app help` lista todas as flags com suas descrições e padrões. A porta é interna ao container; os domínios compartilham a entrada do Traefik.
+
+Antes de gravar, a CLI apresenta os campos alterados e exige digitar **`yes`** em um terminal interativo. `--dry-run` apenas valida e mostra a revisão. Criar e atualizar aceitam `--save-only`: salvam o cadastro e os arquivos gerados sem executar Docker; `jubart app apply ID` aplica os campos salvos posteriormente. Por padrão, as alterações de runtime validam o Compose e aplicam a aplicação selecionada e o Traefik; dependências da aplicação podem ser iniciadas. Alterar somente o nome atualiza o cadastro sem recriar containers. Flags omitidas preservam os campos existentes; rascunhos de outros campos/aplicações permanecem no JSON e não são aplicados por uma edição parcial.
+
+O cadastro usa uma pasta já existente: a CLI não cria código, instala dependências nem provisiona bancos. Ao aplicar um cadastro habilitado, ela verifica a pasta pública/de trabalho correspondente ao tipo. A criação aceita um ID explícito (`app2` até `app100`) ou escolhe o próximo livre. `main` não pode ser removido ou desabilitado. Na remoção, o cadastro e o container são removidos; arquivos do projeto, bancos, credenciais e volumes permanecem. Os valores dos slots base `app2` e `app3` no `.env` são mantidos desabilitados para que o Compose continue válido.
+
+As alterações sincronizam `config/apps.json`, os apontamentos do `.env`, `config/apps.compose.yaml` e as rotas geradas. A configuração anterior fica em `.panel-state/app-cli/<data-id>/before.json`, com permissões restritas. A CLI recusa aplicar uma revisão alterada por outra sessão. Se Docker falhar após salvar, o cadastro novo permanece e a mensagem informa como retomar. Aplicações com filas, jobs, Scheduler, WebSocket ou Mercure vinculados exigem gerenciar esses vínculos no painel antes de alterar o runtime ou remover o cadastro. Recarregue abas abertas do painel após alterações pela CLI.
+
+A gestão de aplicações reutiliza o código Node.js do painel. Usa Node.js no host quando disponível; caso contrário, executa o utilitário no container `panel` em execução. Nesse caso, a pasta do projeto precisa estar montada e acessível no painel, conforme `PANEL_PROJECTS_DIRECTORY`. As consultas de ajuda não dependem de Node.js ou Docker.
+
+Para alternar o acesso, execute `jubart http` ou `jubart ssh` e digite `yes` na confirmação do terminal. Somente após essa confirmação, o CLI salva a troca, recompila a imagem e recria o painel. Enter, outra resposta ou interrupção cancelam sem modificar a configuração. Os atalhos preservam a porta atual; use, por exemplo, `jubart http --port 9090` para mudá-la. A alteração sincroniza `.env` e o cadastro do painel em `config/apps.json` e desativa o acesso do painel por domínio/HTTPS. No modo HTTP, libere a porta no firewall e nas regras do provedor; no modo SSH, execute o túnel no seu computador. O atalho `jubart ssh` configura o acesso do painel e não altera o serviço SSH do servidor.
+
+`jubart users` consulta as contas salvas do painel, incluindo contas desabilitadas identificadas na tabela. As permissões detalhadas e o gerenciamento das contas ficam no painel; usuários SSH do sistema não fazem parte dessa listagem.
+
+`jubart certificates` valida o domínio, a cadeia de confiança do sistema e o período de validade do certificado apresentado na conexão TLS, exibindo início da validade, vencimento em UTC e dias restantes. Avisa quando faltam até 30 dias e retorna código 1 se houver certificado inválido ou falha de conexão. Sem domínio informado, usa `127.0.0.1:HTTPS_PORT` com o domínio configurado no TLS; um domínio informado é consultado pela rede. `--port` substitui a porta da consulta. Sem HTTPS habilitado e sem domínio informado, apenas informa que não há certificados para consultar. A consulta não emite nem renova certificados.
+
+`jubart time` é somente leitura e funciona sem Docker ou `.env`. Quando `timedatectl` não estiver disponível, ainda mostra o horário local e UTC, mas informa que não foi possível consultar NTP. Os fusos dos serviços e backups vêm de `TZ`, `BACKUP_TIMEZONE` e `PG_BACKUP_TIMEZONE` no `.env`; isso não comprova a configuração dos containers em execução.
+
+O CLI usa cores e ícones em terminais compatíveis; containers indicados como `não criado` aparecem em vermelho na tabela de aplicações. A baleia aparece sem fundo e sua animação se repete nas boas-vindas, permitindo digitar normalmente. Após executar um comando, o resultado ocupa a área de conteúdo; `clear` volta às boas-vindas e reinicia a animação. Redimensionar reorganiza a apresentação e mantém o texto digitado. Use `JUBART_NO_ANIMATION=1 jubart` para manter o console de tela inteira com a baleia estática. A animação também é desativada em CI e com cores desativadas. Para desativar cores, use `NO_COLOR=1 jubart`; terminais `TERM=dumb` usam o console em texto simples. Com entrada ou saída redirecionada, `jubart` exibe apenas as boas-vindas estáticas e termina, sem abrir o console.
 
 O CLI lê a instalação à qual o atalho está vinculado; não depende da pasta atual. Para outra instalação, use `jubart --root /caminho/da/instalacao status`. A versão informada vem do código local; o container pode exigir atualização de imagem. Os endereços refletem a configuração salva, enquanto as portas mostradas no estado vêm do Docker. O CLI não detecta túneis SSH abertos nem adivinha IP público e usuário SSH: informe `--host` e `--ssh-user`, ou substitua os marcadores do comando sugerido. Execute o comando SSH **no seu computador**, depois abra o endereço local e mantenha a conexão aberta.
 
@@ -390,7 +544,7 @@ jubart access http --port 9090
 jubart access tunnel --host 203.0.113.10 --ssh-user ubuntu --ssh-port 22
 ```
 
-As duas opções pedem confirmação, salvam no `.env` e sincronizam `config/apps.json` quando existente, para uma aplicação posterior não restaurar o modo antigo. Recriam **somente o painel**, encerrando a sessão. Ambas desativam o proxy por domínio, HTTPS e cookie seguro do painel; as configurações HTTPS das aplicações permanecem. `--port` é opcional e preserva a porta atual quando omitida. Se a recriação falhar, o modo fica salvo e o CLI orienta executar `jubart restart`.
+As duas opções exigem digitar `yes` na confirmação, salvam no `.env` e sincronizam `config/apps.json` quando existente, para uma aplicação posterior não restaurar o modo antigo. Recompilam e recriam **somente o painel**, encerrando a sessão. Ambas desativam o proxy por domínio, HTTPS e cookie seguro do painel; as configurações HTTPS das aplicações permanecem. `--port` é opcional e preserva a porta atual quando omitida. Se a recompilação ou recriação falhar, o modo fica salvo e o CLI orienta repetir `jubart http` ou `jubart ssh`, conforme o modo escolhido.
 
 No modo `http`, libere a porta no firewall apenas para origens autorizadas: HTTP não cifra as credenciais. O CLI não abre portas no firewall. No modo `tunnel`, o acesso direto neste host continua disponível; para acesso remoto, copie o comando SSH mostrado e execute **no seu computador**. O CLI não inicia automaticamente o túnel. Depois de uma alteração pelo CLI, atualize abas abertas do painel antes de editar configurações novamente.
 
@@ -2363,6 +2517,8 @@ Esses testes não iniciam nem alteram seus containers reais. Para validação op
 
 ## ⏱️ Painel: filas, jobs e Laravel Scheduler
 
+Essas informações também podem ser consultadas no terminal com `jubart queues`, `jubart workers`, `jubart jobs --failed` e `jubart schedules`. Use `--app main` ou outro ID para filtrar e `--watch` para acompanhar; **q** ou **Ctrl+C** encerra a visualização. `jubart jobs` mostra o catálogo de jobs cadastrados.
+
 A área **Filas & Scheduler** do Jubart gerencia o trabalho em segundo plano de cada aplicação Laravel. Funciona nos modos tradicional e Octane; não exige Supervisor. Os processos usam a imagem, o diretório e as credenciais do respectivo projeto.
 
 ### 🚀 Aplicar esta atualização
@@ -2564,6 +2720,8 @@ A guia **Métricas ao vivo** do painel apresenta:
 - CPU individual, memória usada/limite, PIDs, entrada/saída de rede e I/O de disco, a partir de `docker stats`.
 - Requisições HTTP/HTTPS acumuladas, requisições por segundo, respostas 5xx e latência média por intervalo, a partir do exporter Prometheus embutido no Traefik.
 - Contadores por rota de aplicação, coletados apenas após existir tráfego.
+
+No terminal, use `jubart monitor` para acompanhar recursos e gráficos, `jubart traffic` para acompanhar tráfego ou `jubart memory` para consultar RAM do host e dos containers. Dentro do console `jubart>`, omita o prefixo. Use `--help` em cada comando para consultar filtros e opções; **q** ou **Ctrl+C** encerra o acompanhamento.
 
 Não é necessário instalar um servidor Prometheus para essa visualização. O painel consulta diretamente o endpoint interno do Traefik. A porta de métricas não é publicada no host; o painel participa da rede proxy para acessá-la.
 
@@ -3957,9 +4115,36 @@ sudo docker compose up -d --build --force-recreate --no-deps panel
 
 Recarregue com **Ctrl+Shift+R**. Nenhuma consulta é executada durante o build e os volumes são preservados. Para arquivos grandes, consulte a área **Importar / exportar SQL**; para recuperação, utilize os [backups](#backup-automatico).
 
+#### Configurar acesso ao banco inicial e redefinir senhas
+
+Em **Dados → Bancos de dados**, selecione **PostgreSQL** ou **MariaDB** e clique em **Configurar acesso** na linha do banco. O mesmo assistente está disponível em **Dados → Conexões** e na seleção de conexão do console SQL. Escolha um nome novo de usuário, uma senha (ou deixe gerar) e as permissões. Após revisar e confirmar, o painel:
+
+1. Confere se o banco existe e se a conta é nova.
+2. Cria uma conta de aplicação e guarda sua senha no cofre cifrado.
+3. Concede permissões ao banco; no PostgreSQL, ao schema `public`, tabelas e sequências atuais, além dos padrões futuros do administrador que faz a concessão.
+4. Testa o login com `SELECT 1` e salva uma conexão cifrada para o console e transferências.
+
+O banco inicial definido em `POSTGRES_DB` costuma pertencer à conta administrativa de `POSTGRES_USER`; o console SQL mantém essa conta protegida. Criar um acesso de aplicação permite usar esse banco pelo painel sem liberar o administrador no editor. O assistente não troca a senha de contas existentes nem publica portas. Para uma conta existente, use **Usuários dos bancos → Permissões por banco**, **Nova conexão** e, se necessário, **Redefinir senha**.
+
+Em **Dados → Conexões → Redefinir senha**, a senha muda no servidor e é sincronizada nas conexões salvas da mesma conta. A confirmação explica os impactos; cancelar preserva a senha atual. Credenciais MariaDB vinculadas ao `.env` da infraestrutura com host `%` continuam sendo sincronizadas nos consumidores gerenciados. **Clientes externos e `.env` dos projetos exigem atualização manual**, inclusive PostgreSQL. Depois, consulte a credencial em **Usuários dos bancos → Ver senha**. **Editar conexão** apenas altera o cadastro e não redefine a senha no servidor.
+
+Se o acesso falhar de outro computador, confira `jubart database access --engine postgres`: com `POSTGRES_BIND_ADDRESS=127.0.0.1`, use túnel SSH no DBeaver/pgAdmin. Endereços apresentados nessa consulta são a configuração salva; confira a publicação efetiva em `jubart status` ou **Proxy & acessos**. O login do painel é separado do usuário do banco. `CONNECT` no inventário PostgreSQL não comprova acesso a schemas, tabelas ou sequências; o teste de login também não valida todas as operações da aplicação.
+
+O fluxo não exclui bancos ou volumes. Se uma etapa falhar após criar a conta, a mensagem informa o que foi concluído e como continuar; revise usuários, permissões e conexões antes de repetir. As senhas não são passadas nos argumentos dos processos nem incluídas na confirmação ou no inventário.
+
+```bash
+jubart databases
+jubart database list --engine postgres --database infra
+jubart database users --engine postgres
+jubart database access --engine postgres --database infra
+jubart database help
+```
+
+Dentro do console `jubart>`, omita o prefixo `jubart`. As consultas exigem Docker e Node.js no host, ou o painel em execução como alternativa para executar o helper Node.js. Elas não criam contas nem alteram senhas.
+
 #### 🔐 Conexões cadastradas
 
-**Dados → Conexões** centraliza os acessos MariaDB e PostgreSQL gerenciados por este Jubart. Ao abrir a área ou um seletor de conexões, o painel cadastra os padrões que ainda não foram importados: contas de aplicação MariaDB do `.env` (principal e grupos `APP_N_DB_*`) e contas MariaDB/PostgreSQL com senha conhecida no cofre e acesso identificado ao banco. Contas administrativas protegidas, bloqueadas, bancos de sistema e senhas desconhecidas não são importados. No PostgreSQL, `POSTGRES_USER` é a conta administrativa da infraestrutura; use as contas de aplicação criadas no painel com acesso concedido ao banco. Não são criados usuários nem alteradas permissões no SGBD. Cadastros existentes não são duplicados ou sobrescritos; conexões removidas não reaparecem. O registro dessa importação fica em `.panel-state/database-connections/defaults.json`, preservado junto ao cadastro e à chave. Alterações posteriores de senha no banco não sobrescrevem silenciosamente uma conexão já cadastrada; edite-a quando necessário. Cada cadastro contém nome, servidor, banco, usuário e senha. É possível criar, editar, testar e remover conexões. O teste executa somente `SELECT 1 AS connected;`, usando as verificações do console; ele não comprova permissões para todas as operações de exportação/importação. Testar antes de salvar é opcional. Ao editar, senha vazia mantém a atual; a senha salva nunca é devolvida ao navegador.
+**Dados → Conexões** centraliza os acessos MariaDB e PostgreSQL gerenciados por este Jubart. Ao abrir a área ou um seletor de conexões, o painel cadastra os padrões que ainda não foram importados: contas de aplicação MariaDB do `.env` (principal e grupos `APP_N_DB_*`) e contas MariaDB/PostgreSQL com senha conhecida no cofre e acesso identificado ao banco. Contas administrativas protegidas, bloqueadas, bancos de sistema e senhas desconhecidas não são importados. No PostgreSQL, `POSTGRES_USER` é a conta administrativa da infraestrutura; use as contas de aplicação criadas no painel com acesso concedido ao banco. Essa importação automática não cria usuários nem altera permissões no SGBD. Cadastros existentes não são duplicados ou sobrescritos; conexões removidas não reaparecem. O registro dessa importação fica em `.panel-state/database-connections/defaults.json`, preservado junto ao cadastro e à chave. Trocas de senha feitas por este painel sincronizam as conexões da conta. Alterações feitas fora do painel não sobrescrevem automaticamente uma conexão já cadastrada; edite-a quando necessário. Cada cadastro contém nome, servidor, banco, usuário e senha. É possível criar, editar, testar e remover conexões. O teste executa somente `SELECT 1 AS connected;`, usando as verificações do console; ele não comprova permissões para todas as operações de exportação/importação. Testar antes de salvar é opcional. Ao editar, senha vazia mantém a atual; a senha salva nunca é devolvida ao navegador.
 
 Console, importação e exportação exigem uma conexão cadastrada. O servidor resolve banco, usuário e senha pelo identificador, recusa divergências de banco/servidor e não aceita credenciais manuais como substituto nessas rotas. O editor abre após validar a conexão. As instruções continuam usando conexões SQL independentes, sem uma transação compartilhada. A exportação usa a conta selecionada, com as permissões necessárias ao dump; não troca silenciosamente para a conta administrativa.
 
@@ -3989,9 +4174,34 @@ Para aplicar a atualização visual, execute `sudo docker compose up -d --build 
 
 ### Versão do painel
 
-A versão aparece ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, inicialmente `1.0.0`. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
+A versão atual do Jubart é `1.1.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
 
-Para registrar uma nova versão, use `npm --prefix docker/panel version 1.0.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do painel e não altera versões das imagens ou das aplicações hospedadas.
+Para registrar uma nova versão, use `npm --prefix docker/panel version 1.1.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do Jubart e não altera versões das imagens ou das aplicações hospedadas.
+
+### Hosts de proxy integrados ao Traefik
+
+Em **Proxy & acessos → Hosts de proxy**, cadastre serviços que devem responder por domínio, como um dashboard em `http://192.168.1.20:3000` ou um container em `http://grafana:3000`. O Jubart gerencia o encaminhamento com o Traefik existente. **Novo host de proxy** aceita:
+
+- Nome e até 20 domínios por host, sem protocolo, porta ou curinga.
+- Protocolo HTTP/HTTPS, IP/nome DNS/container e porta do destino.
+- HTTPS com Let's Encrypt e opção de redirecionar HTTP para HTTPS.
+- Preservação do cabeçalho `Host` original e lista de IPs/redes CIDR permitidos.
+- Métodos HTTP permitidos: todos (padrão) ou uma seleção de `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` e `OPTIONS`.
+- Habilitar/desativar, editar e remover, usando ações por ícones e confirmação.
+
+As alterações guardam uma cópia anterior em `.panel-state/proxy-hosts/before.json` e gravam `config/proxy-hosts.json` e `docker/traefik/proxy-hosts.yml`. Se a gravação das rotas falhar, os arquivos já alterados são restaurados. A recarga usa o [file provider do Traefik](https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/), sem recriar containers. O estado mostrado indica a configuração publicada; não comprova que o destino está respondendo nem que o certificado foi emitido. Divergências entre cadastro e arquivo publicado permitem **Reaplicar rotas**.
+
+Em **Editar host → Métodos HTTP (verbos)**, selecione **Permitir todos** ou **Permitir somente os selecionados**. A seleção é aplicada a todos os domínios do host, em HTTP e HTTPS, usando o [matcher Method do Traefik](https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/rules-and-priority/#method). Métodos fora da seleção não são encaminhados; sem outra rota correspondente, o Traefik responde 404. `HEAD` não é incluído automaticamente ao marcar `GET`; inclua `OPTIONS` quando houver preflight CORS. Isso filtra o método recebido, preservando o verbo enviado ao destino. Hosts anteriores sem esse campo continuam permitindo todos, e a confirmação mostra a seleção antes de publicar.
+
+O destino deve ser alcançável pelo container Traefik. Para containers, use o nome DNS do serviço e uma rede compartilhada. `127.0.0.1` aponta para o próprio container Traefik. HTTPS no destino usa a validação TLS padrão; não há opção para ignorar certificados inválidos. WebSocket acompanha o encaminhamento HTTP.
+
+Para HTTPS público, configure e aplique HTTPS/email ACME em **Acessos web**, aponte o DNS para o servidor e disponibilize as portas necessárias ao desafio HTTP-01. Os hosts HTTPS habilitados aparecem em **Certificados → Verificar HTTPS**, onde é possível consultar o certificado servido. Remover um host preserva o serviço de destino e os certificados armazenados.
+
+A [restrição por IP](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/ipallowlist/) usa o endereço que chega diretamente ao Traefik, sem confiar automaticamente em `X-Forwarded-For`; um CDN ou proxy anterior pode ser a origem observada. Lista vazia permite todas as origens.
+
+Domínios já usados por aplicações, painel, WebSockets ou outros hosts são recusados. Edições de aplicações pelo painel/CLI e de WebSockets também verificam os hosts cadastrados. Os hosts usam as portas HTTP/HTTPS globais e a infraestrutura de certificados existente; seu cadastro não altera DNS, firewall, redes Docker nem a aplicação de destino.
+
+Inclua `config/proxy-hosts.json`, `docker/traefik/proxy-hosts.yml` e o volume ACME no backup da instalação. A exportação `Jubart.json` mantém seu escopo anterior e não inclui esses hosts.
 
 ### Acesso individual a MariaDB, PostgreSQL e phpMyAdmin
 
@@ -4335,7 +4545,7 @@ A troca grava somente `PANEL_PASSWORD` no `.env`, com permissão de arquivo rest
 
 ### Identidade visual
 
-A logo oficial fica em `icon.svg`, na raiz. Ela é usada no login, na identificação do painel, no favicon e nas páginas de erro HTTP. Após substituir esse arquivo, execute `node scripts/sync-brand.mjs` para atualizar a cópia pública e as imagens incorporadas às páginas de erro. Inclua os arquivos atualizados no deploy. As páginas de erro carregam a logo sem depender da aplicação estar disponível.
+A logo oficial fica em `icon.svg`, na raiz. O login e a identificação do painel usam sua versão transparente e animada, com a baleia ampliada e sem o quadrado azul. A animação respeita a preferência de movimento reduzido do navegador. O favicon mantém o ícone completo. Após substituir a logo, execute `node scripts/sync-brand.mjs` para atualizar as versões públicas e as imagens incorporadas às páginas de erro; `--panel-only` atualiza apenas os assets do painel. Para gerar os quadros do terminal a partir da baleia transparente, execute `python3 scripts/generate-cli-logo.py` (na máquina de desenvolvimento, com Pillow, librsvg e Cairo). A CLI instalada usa apenas o JSON gerado, sem bibliotecas de imagem adicionais. Inclua os arquivos atualizados no deploy e execute o build da interface ao alterar seus componentes. As páginas de erro carregam a logo sem depender da aplicação estar disponível.
 
 ### Compatibilidade do nome anterior
 

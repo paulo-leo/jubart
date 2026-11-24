@@ -33,7 +33,7 @@ export function validateBackup(config,root) {
   for(const key of backupFields)if(config[key]!==undefined&&(/[\x00-\x1f'\\$]/.test(String(config[key]))))throw new Error('Configuração contém caracteres não suportados.');
   return config;
 }
-export function createDatabaseAPI({root,compose,readEnv,startOperation,composeConfig=async()=>({services:{}}),syncConnections=async()=>{}}){
+export function createDatabaseAPI({root,compose,readEnv,startOperation,composeConfig=async()=>({services:{}}),syncConnections=async()=>{},saveConnection}){
   const vault=createVault(root,readEnv);
   const backupService=engine=>engine==='mariadb'?'backup':'backup-postgres';
   async function sql(engine,query){
@@ -53,8 +53,8 @@ export function createDatabaseAPI({root,compose,readEnv,startOperation,composeCo
     const found=(await inventory(engine)).users.find(u=>u.name===user&&(engine==='postgres'||u.host===host));
     if(!found||found.admin)throw new Error('Conta inexistente ou administrativa/protegida.');
   }
-  async function handle(route,method,data){
-    const match=route.match(/^\/api\/databases\/(mariadb|postgres)(?:\/(create-database|create-user|password|lock|unlock|grant|revoke|reveal|backup-settings|backup-run|backup-delete))?$/);
+  async function handle(route,method,data,actor){
+    const match=route.match(/^\/api\/databases\/(mariadb|postgres)(?:\/(setup-access|create-database|create-user|password|lock|unlock|grant|revoke|reveal|backup-settings|backup-run|backup-delete))?$/);
     if(!match)return {status:404,body:{error:'Operação de banco não encontrada.'}};
     const [,engine,action]=match;
     if (!databaseEnabled(parseEnv(await readEnv()), engine)) return {status:409,body:{error:'Banco desativado no .env da infraestrutura. Habilite '+(engine==='mariadb'?'MARIADB_ENABLED':'POSTGRES_ENABLED')+' para administrá-lo.'}};
@@ -65,6 +65,28 @@ export function createDatabaseAPI({root,compose,readEnv,startOperation,composeCo
       return {status:200,body:{engine,inventory:list,inventoryError:error,backup:backupConfig(env,engine),backupStatus:status,backupStatusError:statusError,connection:{host:engine,port:engine==='mariadb'?3306:5432,published:true,bindAddress:env[engine==='mariadb'?'MARIADB_BIND_ADDRESS':'POSTGRES_BIND_ADDRESS']||'127.0.0.1',hostPort:Number(env[engine==='mariadb'?'MARIADB_PORT':'POSTGRES_PORT']||(engine==='mariadb'?3306:5432)),defaultStorageEngine:engine==='mariadb'?(env.MARIADB_DEFAULT_STORAGE_ENGINE||'InnoDB'):null}}};
     }
     if(method!=='POST')return {status:405,body:{error:'Use POST para operações de banco.'}};
+    if(action==='setup-access'){
+      if(!saveConnection)throw new Error('Cadastro de conexões indisponível. Atualize o painel.');
+      const env=parseEnv(await readEnv()),database=identifier(data.database),user=identifier(data.user),host=engine==='mariadb'?'%':'network';
+      protectDatabase(database);protectAccount(engine,user,env.POSTGRES_USER||'infra_admin');
+      const password=passwordValue(data.password),permission=data.permission||'readwrite';
+      encryptPassword(password,env.PANEL_VAULT_KEY);
+      const create=createUserSQL(engine,user,host,password),grant=accessSQL(engine,user,host,database,permission);
+      const name=`${engine==='postgres'?'PostgreSQL':'MariaDB'} · ${database} · ${user}`.slice(0,80);
+      const check=async()=>{
+        const list=await inventory(engine);
+        if(!list.databases.some(d=>d.name===database))throw new Error('Banco não encontrado. Atualize a listagem.');
+        if(list.users.some(u=>u.name===user&&(engine==='postgres'||u.host===host)))throw new Error('Esta conta já existe. Use Permissões por banco ou Redefinir senha; escolha outro nome para criar um acesso separado.');
+      };
+      await check();
+      return {status:202,body:{operation:startOperation(`Configurar acesso · ${engine} · ${database}`,async()=>{
+        await check();
+        await sql(engine,create);
+        try{await vault.save(engine,user,host,password);}catch{throw new Error('Conta criada, mas a senha não pôde ser guardada. Redefina a senha em Usuários antes de continuar.');}
+        try{await sql(engine,grant);}catch{throw new Error('Conta criada e senha guardada no cofre, mas as permissões não foram concluídas. Revise em Usuários → Permissões por banco antes de tentar novamente.');}
+        try{await saveConnection({name,engine,database,user,password},actor);}catch{throw new Error('Conta criada, senha guardada e permissões concedidas. O teste/cadastro da conexão falhou. Confira a disponibilidade e cadastre a conexão em Dados → Conexões; a senha está em Usuários.');}
+      })}};
+    }
     if(action==='backup-delete'){
       if(typeof data.name!=='string'||data.name.length>255||!new RegExp(`^${engine}-[A-Za-z0-9_.-]+\\.sql\\.gz$`).test(data.name)||data.name.includes('..'))throw new Error('Nome de backup inválido.');
       return {status:202,body:{operation:startOperation(`Excluir backup local · ${engine}`,()=>compose(['exec','-T',backupService(engine),'python3','/opt/backup/backup.py','delete',data.name],undefined,{timeout:10000}))}};

@@ -10,7 +10,7 @@ export const proxyAddressKey='JUBART_TRAEFIK_IPV4';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const nameOK=value=>typeof value==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value);
-export function proxyComposeArgs(root){return existsSync(path.join(root,proxyComposeFile))?['-f',path.join(root,proxyComposeFile)]:[];}
+export function proxyComposeArgs(root){return [proxyComposeFile,'compose.production.yaml'].filter(file=>existsSync(path.join(root,file))).flatMap(file=>['-f',path.join(root,file)]);}
 export function ipv4Number(ip){
  if(typeof ip!=='string'||!/^\d+\.\d+\.\d+\.\d+$/.test(ip))fail('IPv4 inválido.');
  const parts=ip.split('.');if(parts.some(p=>!/^0$|^[1-9]\d*$/.test(p)||Number(p)>255))fail('IPv4 inválido.');

@@ -6,7 +6,8 @@ test('gera workers isolados do servidor HTTP e desabilitados por padrão', () =>
   const config = emptyAutomation(); config.workers.push(worker());
   const service = automationCompose(config).services['worker-aabbccddeeff'];
   assert.deepEqual(service.profiles, ['automation-disabled']);
-  assert.equal(service.extends.service, 'php');
+  assert.equal(service.extends.service, '${JUBART_MAIN_AUTOMATION_SERVICE:-php}');
+  assert.equal(service.extends.file, '${JUBART_MAIN_AUTOMATION_FILE:-compose.yaml}');
   assert.notEqual(service.container_name, 'php');
   assert.ok(service.command.includes('queue:work'));
   assert.ok(service.command.includes('--queue=emails'));

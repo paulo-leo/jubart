@@ -47,7 +47,7 @@ test('cadastra, inicia, consulta e para fila; registra job e Scheduler com açõ
   registry=await request('/api/automation');assert.equal(registry.config.workers[0].enabled,false);assert.equal(registry.config.schedulers[0].enabled,true);
   assert.ok(calls.some(c=>c.args.includes('stop')&&c.args.includes('90')&&c.args.includes(worker.id)));
   assert.equal(calls.some(c=>c.args.includes('down')||c.args.includes('-v')||c.args.includes('queue:clear')),false);
-  assert.ok(calls.some(c=>c.args.includes('up')&&c.args.includes(worker.id)));
+  assert.ok(calls.some(c=>c.args.includes('up')&&c.args.includes('--no-deps')&&c.args.includes(worker.id)));
   const applications=JSON.parse(await fs.readFile(path.join(root,'config/apps.json'),'utf8'));
   applications.applications[0].type='node';await fs.writeFile(path.join(root,'config/apps.json'),JSON.stringify(applications));
   registry=await request('/api/automation');

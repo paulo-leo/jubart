@@ -184,9 +184,9 @@ select.form-control[multiple],select.form-control[size]:not([size="1"]){backgrou
 @keyframes login-smoke-teal{0%{transform:translate(12%,15%) rotate(8deg) scale(1)}50%{transform:translate(-20%,-12%) rotate(-15deg) scale(1.2)}100%{transform:translate(-35%,8%) rotate(-30deg) scale(.95)}}
 @media(max-width:600px){#login .login-ambient span{width:110vw;height:110vw;filter:blur(55px)}#login .login-ambient span:nth-child(2){width:110vw;height:110vw;left:10%;top:45%}#login .login-ambient span:nth-child(3){width:90vw;height:120vw;left:10%}}
 @media(prefers-reduced-motion:reduce){#login .login-ambient span{animation:none;will-change:auto}#login .login-password-toggle{transition:none}}
-/* A marca oficial já contém seu fundo e proporções. */
-#login .login-emblem{background:none;border:0;border-radius:0;box-shadow:none;filter:drop-shadow(0 9px 14px #125ac62b)}#login .login-emblem img{display:block;width:100%;height:100%;object-fit:contain}
-.brand .brand-icon.infra-logo,.sidebar .brand .brand-icon.infra-logo{display:block;object-fit:contain;width:34px;height:34px;min-width:34px;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
+/* Baleia transparente, ampliada para preservar os detalhes da marca. */
+#login .login-emblem{width:100px;height:88px;background:none;border:0;border-radius:0;box-shadow:none;filter:drop-shadow(0 7px 10px #125ac623)}#login .login-emblem img{display:block;width:100%;height:100%;object-fit:contain}
+.brand .brand-icon.infra-logo,.sidebar .brand .brand-icon.infra-logo{display:block;object-fit:contain;width:46px;height:42px;min-width:46px;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
 /* Ondas da marca, sempre atrás dos controles e sem capturar cliques. */
 .brand-watermark{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0;user-select:none;color:#3f85d7}.brand-watermark>img{position:absolute;right:4vw;bottom:6vh;width:clamp(220px,26vw,400px);height:auto;opacity:.035;animation:brand-float 14s ease-in-out infinite}.brand-ocean{position:absolute;left:-20%;bottom:0;width:140%;height:180px;overflow:visible}.brand-ocean path{fill:currentColor;opacity:.035;animation:brand-tide 20s linear infinite}.brand-ocean path+path{opacity:.025;animation-duration:27s;animation-direction:reverse}
 #dashboard .main-shell{position:relative;isolation:isolate}#dashboard .main-shell>main{position:relative;z-index:1}#dashboard .main-shell>.topbar{position:sticky;z-index:30}

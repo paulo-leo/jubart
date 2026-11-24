@@ -1,3 +1,4 @@
+import {createProxyHosts,assertProxyHostDomains} from './proxy-hosts.mjs';
 import {createProxyNetwork,proxyComposeArgs} from './proxy-network.mjs';
 import {createPanelMaintenance} from './panel-maintenance.mjs';
 import {createMercure} from './mercure.mjs';
@@ -139,14 +140,15 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   }
   const infraEnv=createInfraEnv({readEnv,audit:event=>panelUsers.audit(event)});
   const configurationTransfer=createConfigurationTransfer({root,readEnv,loadConfig,audit:event=>panelUsers.audit(event)});
-  const certificates=createCertificates({root,readEnv,loadConfig,composeConfig,docker,compose,startOperation,audit:event=>panelUsers.audit(event)});
+  const proxyHosts=createProxyHosts({root,readEnv,loadConfig,startOperation,audit:event=>panelUsers.audit(event)});
+  const certificates=createCertificates({root,readEnv,loadConfig,proxyEndpoints:()=>proxyHosts.endpoints(),composeConfig,docker,compose,startOperation,audit:event=>panelUsers.audit(event)});
   const serverSettings=createServerSettings({root,readEnv,compose,loadConfig,startOperation,audit:event=>panelUsers.audit(event)});
   const proxyNetwork=createProxyNetwork({root,readEnv,composeConfig,compose,docker,startOperation,audit:event=>panelUsers.audit(event)});
   const pmaSettings=createPMASettings({root,readEnv,compose,startOperation,audit:event=>panelUsers.audit(event)});
   const serviceAccess=createServiceAccess({root,readEnv,loadConfig,compose,docker,composeConfig,startOperation,audit:event=>panelUsers.audit(event)});
   const mercure=createMercure({root,readEnv,loadConfig,composeConfig,docker,startOperation,audit:event=>panelUsers.audit(event)});
   const websockets=createWebsockets({root,readEnv,loadConfig,compose,composeConfig,startOperation,audit:event=>panelUsers.audit(event),serviceLogs});
-  const databases = createDatabaseAPI({ root, compose, readEnv, startOperation, composeConfig, syncConnections:data=>databaseConnections.syncPassword(data) });
+  const databases = createDatabaseAPI({ root, compose, readEnv, startOperation, composeConfig, syncConnections:data=>databaseConnections.syncPassword(data), saveConnection:(data,actor)=>databaseConnections.saveAccess(data,actor) });
   const sqlConsole=createSQLConsole({root,readEnv,databases,audit:event=>panelUsers.audit(event),runner:sqlRunner,canExecute:()=>!panelMaintenance.isRunning()});
   const databaseConnections=createDatabaseConnections({root,readEnv,discoverDefaults:defaultConnectionDiscovery({root,readEnv,databases}),testConnection:(engine,data,actor)=>sqlConsole.connect(engine,data,actor),audit:event=>panelUsers.audit(event)});
   const automation = createAutomationAPI({ root, compose, loadConfig, readEnv, clean, startOperation, serviceLogs });
@@ -247,7 +249,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           const result=await phpAPI.handle(url.pathname,req.method,req.method==='GET'?{}:await body(req));
           return send(res,result?.status||404,result?.body||{error:'Operação PHP desconhecida.'});
         }
-        if(url.pathname==='/api/operation-preview'&&req.method==='POST'){const payload=await body(req);if(typeof payload.route!=='string'||!payload.route.startsWith('/'))return send(res,400,{error:'Operação inválida.'});if(['/proxy-network/apply','/proxy-network/rollback'].includes(payload.route))return send(res,200,await proxyNetwork.confirmation(payload.data||{},payload.route.endsWith('/rollback')));if(payload.route==='/panel-maintenance/start-services')return send(res,200,panelMaintenance.confirmation('services'));if(payload.route==='/panel-maintenance/rebuild')return send(res,200,panelMaintenance.confirmation());const mercurePlan=payload.route.match(/^\/mercure\/(main|app[0-9]+)\/apply$/);if(mercurePlan)return send(res,200,await mercure.confirmation(mercurePlan[1],payload.data||{}));if(payload.route.startsWith('/plugins/'))return send(res,200,await plugins.confirmation(payload.route,payload.data||{}));return send(res,200,await operationPreview({root,route:payload.route,data:payload.data||{},config:(await loadConfig()).config,compose}));}
+        if(url.pathname==='/api/operation-preview'&&req.method==='POST'){const payload=await body(req);if(typeof payload.route!=='string'||!payload.route.startsWith('/'))return send(res,400,{error:'Operação inválida.'});if(/^\/proxy-hosts\/(save|toggle|remove|apply)$/.test(payload.route))return send(res,200,await proxyHosts.confirmation(payload.route.split('/')[2],payload.data||{}));if(['/proxy-network/apply','/proxy-network/rollback'].includes(payload.route))return send(res,200,await proxyNetwork.confirmation(payload.data||{},payload.route.endsWith('/rollback')));if(payload.route==='/panel-maintenance/start-services')return send(res,200,panelMaintenance.confirmation('services'));if(payload.route==='/panel-maintenance/rebuild')return send(res,200,panelMaintenance.confirmation());const mercurePlan=payload.route.match(/^\/mercure\/(main|app[0-9]+)\/apply$/);if(mercurePlan)return send(res,200,await mercure.confirmation(mercurePlan[1],payload.data||{}));if(payload.route.startsWith('/plugins/'))return send(res,200,await plugins.confirmation(payload.route,payload.data||{}));return send(res,200,await operationPreview({root,route:payload.route,data:payload.data||{},config:(await loadConfig()).config,compose}));}
         if(url.pathname==='/api/security/password'&&req.method==='POST'){
           if(principal.id!=='bootstrap')return send(res,403,{error:'Entre com a conta administradora do .env para trocar sua senha.'});
           const data=await body(req);const check=await loginProtection.attempt(req,async()=>{if(!await panelPassword.verify(data.currentPassword))return null;await panelPassword.change(data,actor);for(const [id,entry]of sessions)if(entry.userId==='bootstrap'){sessions.delete(id);await terminals.closeOwner(id);}return principal;});
@@ -271,6 +273,9 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if(url.pathname==='/api/infra-env'&&req.method==='GET')return send(res,200,await infraEnv.read(actor));
         if(url.pathname==='/api/infra-env/reveal'&&req.method==='POST')return send(res,200,await infraEnv.reveal(await body(req),actor));
         const runningVersion=url.pathname.match(/^\/api\/runtime-versions\/(php|node)\/running$/);if(runningVersion&&req.method==='GET')return send(res,200,await runtimeVersions.running(runningVersion[1]));
+        if(url.pathname==='/api/proxy-hosts'&&req.method==='GET')return send(res,200,await proxyHosts.read());
+        const proxyHostAction=url.pathname.match(/^\/api\/proxy-hosts\/(save|toggle|remove|apply)$/);
+        if(proxyHostAction&&req.method==='POST')return send(res,202,await proxyHosts.change(proxyHostAction[1],await body(req),actor));
         if(url.pathname==='/api/certificates'&&req.method==='GET')return send(res,200,await certificates.read());
         if(url.pathname==='/api/certificates/recheck'&&req.method==='POST')return send(res,202,await certificates.check(actor));
         if(url.pathname==='/api/certificates/inspect'&&req.method==='POST')return send(res,200,await certificates.inspect((await body(req)).id));
@@ -373,7 +378,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
 
         if (url.pathname.startsWith('/api/databases/')) {
           if (req.method !== 'GET' && (operation?.state === 'running' || terminalBusy)) return send(res, 409, { error: 'Aguarde a operação atual.' });
-          const result = await databases.handle(url.pathname, req.method, req.method === 'GET' ? {} : await body(req));
+          const result = await databases.handle(url.pathname, req.method, req.method === 'GET' ? {} : await body(req), actor);
           return send(res, result.status, result.body);
         }
         if (url.pathname.startsWith('/api/automation')) {
@@ -390,6 +395,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           const data = await body(req), current = await loadConfig();
           if (data.revision !== current.revision) return send(res, 409, { error: 'Configuração alterada em outra sessão. Atualize a página.' });
           validateConfig(data.config);
+          await assertProxyHostDomains(root,data.config);
           await atomicWrite(configFile, JSON.stringify(data.config, null, 2) + '\n');
           return send(res, 200, await loadConfig());
         }
@@ -397,7 +403,8 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           if (operation?.state === 'running') return send(res, 409, { error: 'Aguarde a operação atual.' });
           const data = await body(req), current = await loadConfig();
           if (data.revision !== current.revision) return send(res, 409, { error: 'Configuração alterada. Atualize antes de importar.' });
-          await atomicWrite(configFile, JSON.stringify(fromEnv(parseEnv(await readEnv())), null, 2) + '\n');
+          const imported=fromEnv(parseEnv(await readEnv()));await assertProxyHostDomains(root,imported);
+          await atomicWrite(configFile, JSON.stringify(imported, null, 2) + '\n');
           return send(res, 200, await loadConfig());
         }
         if (url.pathname === '/api/apply' && req.method === 'POST') {
@@ -405,6 +412,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           const saved = await loadConfig();
           if (expected !== saved.revision) return send(res, 409, { error: 'Atualize a configuração antes de aplicar.' });
           const op = startOperation('Aplicar apontamentos e proxy', async () => {
+            await assertProxyHostDomains(root,saved.config);
             await checkPaths(saved.config, root);
             const oldEnv = await readEnv(), next = patchEnv(oldEnv, saved.config);
             const staged = path.join(root, '.env.panel-staged');

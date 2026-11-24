@@ -50,7 +50,7 @@ export function createAutomationAPI({ root, compose, loadConfig, readEnv, clean,
   async function recreateEnabled() {
     const config = (await store.load()).config;
     const names = [...config.workers, ...config.schedulers].filter(p => p.enabled).map(p => p.id);
-    if (names.length) await compose([...all, 'up', '-d', '--build', '--force-recreate', ...names]);
+    if (names.length) await compose([...all, 'up', '-d', '--no-deps', '--build', '--force-recreate', ...names]);
   }
   async function handle(route, method, data) {
     if (route === '/api/automation' && method === 'GET') return { status: 200, body: await state() };
@@ -110,7 +110,7 @@ export function createAutomationAPI({ root, compose, loadConfig, readEnv, clean,
           item.enabled = true; await persist(saved.config);
           await compose([...all, 'config', '--quiet']);
           // Recria para receber imagem, .env e diretório atuais.
-          await compose([...all, 'up', '-d', '--build', '--force-recreate', id]);
+          await compose([...all, 'up', '-d', '--no-deps', '--build', '--force-recreate', id]);
         }
       }) } };
     }

@@ -24,13 +24,18 @@ const phpDefaults=parseEnv(await fs.readFile(path.resolve(import.meta.dirname,'.
 await fs.appendFile(path.join(root,'.env'),`NODE_VERSION=${phpDefaults.NODE_VERSION}\nAPP_NODE_VERSION=${phpDefaults.APP_NODE_VERSION}\n`);
 await fs.writeFile(path.join(root,'projects/principal/package.json'),JSON.stringify({dependencies:{sample:'1.2.3'},scripts:{build:'echo build'}}));
 await fs.writeFile(path.join(root,'projects/principal/package-lock.json'),JSON.stringify({lockfileVersion:3,packages:{'':{},'node_modules/sample':{version:'1.2.3',license:'MIT'}}}));
+const createdDatabaseUsers=[],databaseLogins=[];let passwordChanges=0;
+await fs.appendFile(path.join(root,'.env'),`PANEL_VAULT_KEY=${'a'.repeat(64)}\n`);
+if(process.env.JUBART_PROXY_QA==='1')await fs.appendFile(path.join(root,'.env'),'TRAEFIK_TLS_ENABLED=true\nACME_EMAIL=admin@example.com\n');
 let stopCalls = 0; let createdEngine = null; let slowLogs = false; let logCalls = 0;let terminalExecutions=0;
 const mock = async (_,args,options) => {
  if(args.includes('stop'))stopCalls++;
  if(args.includes('php -v'))terminalExecutions++;
  if(args.includes('logs')){logCalls++;if(slowLogs)await new Promise(r=>setTimeout(r,700));}
  if(options?.input?.startsWith('CREATE DATABASE')){createdEngine=args.includes('postgres')?'postgres':'mariadb';return {stdout:''};}
- if(options?.input&&options.input.includes("'kind'"))return {stdout:[{kind:'database',name:args.includes('postgres')?'financeiro':'laravel',bytes:12582912,tables:18,owner:'infra_admin',connections:3},{kind:'user',name:'appuser',host:args.includes('postgres')?'network':'%',locked:false,admin:false},{kind:'user',name:args.includes('postgres')?'infra_admin':'root',host:'localhost',admin:true},{kind:'grant',user:'appuser',database:'financeiro',privileges:'CONNECT (efetivo)'}].map(JSON.stringify).join('\n')};
+ if(options?.input?.includes('CREATE ROLE')){const user=options.input.match(/CREATE ROLE "([a-z0-9_]+)"/)[1];createdDatabaseUsers.push({kind:'user',name:user,host:'network',locked:false,admin:false});return {stdout:''};}
+ if(options?.input?.includes('ALTER ROLE')&&options.input.includes('PASSWORD')){passwordChanges++;return {stdout:''};}
+ if(options?.input&&options.input.includes("'kind'"))return {stdout:[...(args.includes('postgres')?createdDatabaseUsers:[]),{kind:'database',name:args.includes('postgres')?'financeiro':'laravel',bytes:12582912,tables:18,owner:'infra_admin',connections:3},{kind:'user',name:'appuser',host:args.includes('postgres')?'network':'%',locked:false,admin:false},{kind:'user',name:args.includes('postgres')?'infra_admin':'root',host:'localhost',admin:true},{kind:'grant',user:'appuser',database:'financeiro',privileges:'CONNECT (efetivo)'}].map(JSON.stringify).join('\n')};
  if(args.includes('/opt/backup/backup.py')&&args.includes('status'))return {stdout:JSON.stringify({fileCount:2,bytes:1048576,lastSuccess:1794222000,files:[{name:'database-backup.sql.gz',bytes:524288,createdAt:1794222000,uploaded:true}]})};
  if(args.includes('/opt/infra/automation.php'))return {stdout:'__INFRA_JSON__'+JSON.stringify({ok:true,data:{queues:[{id:'worker-aabbccddeeff',counts:{total:4,pending:3,reserved:1,delayed:0}}],failed:[{id:'123',queue:'relatorios',connection:'redis',failedAt:'2026-11-09 03:00:00'}]}})};
  if(args[0]==='info')return {stdout:'{"cpus":8,"memoryBytes":17179869184}'};
@@ -54,7 +59,7 @@ const mock = async (_,args,options) => {
 let metricCount=1250;
 const metricsFetcher=async()=>({ok:true,text:async()=>`process_start_time_seconds 100\ntraefik_entrypoint_requests_total{entrypoint="web",code="200"} ${metricCount+=12}\ntraefik_entrypoint_requests_total{entrypoint="web",code="500"} 3\ntraefik_entrypoint_request_duration_seconds_sum{entrypoint="web"} ${metricCount/10}\ntraefik_entrypoint_request_duration_seconds_count{entrypoint="web"} ${metricCount}\ntraefik_router_requests_total{router="app-http@file",code="200"} ${metricCount}\n`});
 const terminalEngine={async open(){terminalExecutions++;let output,exit;return {onData:fn=>output=fn,onExit:fn=>exit=fn,resume(){output(Buffer.from('PHP 8.4 · teste de console\r\n$ '));},write:data=>output(Buffer.from(data)),resize:async()=>{},close:async()=>{}};}};
-const server=createPanel({terminalEngine,metricsFetcher,root,username:'paulo',password:'preview-password-only',terminalEnabled:true,transferRunner:async({job,output,onBytes})=>{if(job.kind==='export'){await fs.writeFile(output,'CREATE TABLE sample(id int);');onBytes(28);}},executor:mock});
+const server=createPanel({terminalEngine,metricsFetcher,root,username:'paulo',password:'preview-password-only',sqlRunner:async data=>{databaseLogins.push(data);return {columns:['connected'],rows:[[1]],returnedRows:1,affectedRows:0,durationMs:1};},terminalEnabled:true,transferRunner:async({job,output,onBytes})=>{if(job.kind==='export'){await fs.writeFile(output,'CREATE TABLE sample(id int);');onBytes(28);}},executor:mock});
 server.listen(0,'127.0.0.1'); await once(server,'listening');
 const profile=await fs.mkdtemp('/tmp/infra-panel-chromium-');
 const chrome=spawn(browserBinary,[...(insecureHTTP?['--host-resolver-rules=MAP jubart.test 127.0.0.1','--no-proxy-server']:[]),'--headless','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--remote-debugging-port=9227','--user-data-dir='+profile,'--window-size=1440,1050','about:blank'],{stdio:'ignore'});
@@ -70,7 +75,7 @@ try{
  const evaluate=async expression=>{const r=await command('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value;};
  async function approve(){for(let i=0;i<60;i++){if(await evaluate('document.querySelector("#confirm-dialog")?.open'))break;await new Promise(r=>setTimeout(r,50));}if(!await evaluate('document.querySelector("#confirm-dialog")?.open'))throw new Error('Confirmação esperada não abriu');if(!await evaluate('document.querySelector("#confirm-review").textContent.includes("Comandos e operações previstos")'))throw new Error('Comandos ausentes');if(!await evaluate('document.querySelector("#confirm-review").textContent.includes("Possíveis impactos")'))throw new Error('Resumo de impactos ausente');await evaluate('document.querySelector("#confirm-accept").click()');await new Promise(r=>setTimeout(r,60));}
  await command('Runtime.enable');await command('Page.enable');
- const wait=async(expression,label)=>{for(let i=0;i<100;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,60));}throw new Error(label||expression);};
+ const wait=async(expression,label)=>{for(let i=0;i<100;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,60));}throw new Error((label||expression)+(browserErrors.length?' · '+browserErrors.join('; '):''));};
  const set=async(selector,value)=>evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});const proto=el.tagName==='SELECT'?HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
  const click=async selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
  const tab=async id=>{await click(`[data-tab=${id}]`);await new Promise(r=>setTimeout(r,150));};
@@ -79,7 +84,57 @@ try{
  await set('[name=username]','paulo');await set('[name=password]','preview-password-only');
  await evaluate('document.querySelector("#login-form").requestSubmit()');
  await wait('!!document.querySelector("[data-hub-tab=services]")','Central de aplicativos não carregou');
- if(insecureHTTP){
+ if(process.env.JUBART_PROXY_QA==='1'){
+  await tab('proxy');try{await wait('!!document.querySelector("#proxy-host-create")');}catch(error){throw new Error(error.message+' · '+await evaluate('document.querySelector("#view-proxy")?.innerText'));}await click('#proxy-host-create');await wait('!!document.querySelector("#proxy-host-editor")');
+  await set('#proxy-host-editor [name=name]','Dashboard de teste');await set('#proxy-host-editor [name=domains]','dash.example.com\nwww.dash.example.com');await set('#proxy-host-editor [name=host]','10.0.0.10');await set('#proxy-host-editor [name=port]','3000');await set('#proxy-host-editor [name=allowedIPs]','192.168.1.0/24');await click('#proxy-host-editor [name=tls]');
+  await set('#proxy-host-editor [name=methodMode]','selected');await evaluate('document.querySelector("#proxy-host-editor-form").requestSubmit()');await wait('document.querySelector("#proxy-host-editor .error")?.textContent.includes("Selecione ao menos um método")');
+  if(await evaluate('!!document.querySelector("#confirm-dialog")'))throw new Error('Seleção vazia abriu confirmação');
+  for(const method of ['GET','POST','OPTIONS'])await click('#proxy-host-editor [name=method_'+method+']');
+  await evaluate('document.querySelector("#proxy-host-editor-form").requestSubmit()');await wait('!!document.querySelector("#confirm-dialog")');await click('#confirm-cancel');
+  const registry=path.join(root,'config/proxy-hosts.json'),routes=path.join(root,'docker/traefik/proxy-hosts.yml');
+  if(await fs.stat(registry).catch(()=>null))throw new Error('Proxy salvo após cancelar');
+  await evaluate('document.querySelector("#proxy-host-editor-form").requestSubmit()');await approve();await wait('!document.querySelector("#proxy-host-editor")');await wait('document.querySelector("#proxy-host-list")?.textContent.includes("dash.example.com")');
+  let record=JSON.parse(await fs.readFile(registry,'utf8')).hosts[0],published=JSON.parse(await fs.readFile(routes,'utf8'));
+  if(JSON.stringify(record.methods)!==JSON.stringify(['GET','POST','OPTIONS'])||!published.http.routers['jubart-'+record.id+'-https'].rule.includes('Method(`OPTIONS`)'))throw new Error('Métodos não persistidos');
+  if(!record.tls||published.http.services['jubart-'+record.id].loadBalancer.servers[0].url!=='http://10.0.0.10:3000')throw new Error('Destino ou TLS incorreto');
+  await click('[data-proxy-host-edit]');await wait('!!document.querySelector("#proxy-host-editor")');if(!await evaluate('document.querySelector("#proxy-host-editor [name=method_GET]").checked&&!document.querySelector("#proxy-host-editor [name=method_HEAD]").checked'))throw new Error('Métodos perdidos na edição');await set('#proxy-host-editor [name=port]','4000');await evaluate('document.querySelector("#proxy-host-editor-form").requestSubmit()');await approve();await wait('!document.querySelector("#proxy-host-editor")');
+  if(!String(await fs.readFile(routes,'utf8')).includes('10.0.0.10:4000'))throw new Error('Edição não publicada');
+  await click('[data-proxy-host-toggle]');await approve();await wait('document.querySelector("#proxy-host-list")?.textContent.includes("Desativado")');if(Object.keys(JSON.parse(await fs.readFile(routes,'utf8'))).length)throw new Error('Rota ainda ativa');
+  await click('[data-proxy-host-toggle]');await approve();await wait('document.querySelector("#proxy-host-list")?.textContent.includes("Habilitado")');
+  const endpoints=await evaluate('(async()=>{const response=await fetch("/api/certificates");return (await response.json()).endpoints;})()');if(!endpoints.some(e=>e.domain==='dash.example.com'))throw new Error('Host não aparece em certificados');
+  await evaluate('document.querySelectorAll(".jubart-notice button").forEach(b=>b.click())');
+  for(const width of [1440,768,390]){await command('Emulation.setDeviceMetricsOverride',{width,height:1050,deviceScaleFactor:1,mobile:width===390});await tab('proxy');if(await evaluate('document.documentElement.scrollWidth>window.innerWidth'))throw new Error('Overflow nos hosts de proxy '+width);await fs.writeFile(`/tmp/jubart-proxy-hosts-${width}.png`,Buffer.from((await command('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));}
+  await click('[data-proxy-host-edit]');await wait('!!document.querySelector("#proxy-host-editor")');await set('#proxy-host-editor [name=methodMode]','all');await evaluate('document.querySelector("#proxy-host-editor-form").requestSubmit()');await approve();await wait('!document.querySelector("#proxy-host-editor")');if(String(await fs.readFile(routes,'utf8')).includes('Method('))throw new Error('Permitir todos manteve restrições');
+  await click('[data-proxy-host-remove]');await approve();await wait('!document.querySelector("[data-proxy-host-remove]")');if(JSON.parse(await fs.readFile(registry,'utf8')).hosts.length)throw new Error('Host não removido');
+  if(browserErrors.length)throw new Error(browserErrors.join('; '));
+  console.log('Proxy browser QA OK: métodos HTTP, cadastro/edição, cancelar/confirmar, HTTPS e IPs, desativar/reativar/remover, integração com certificados e telas 1440/768/390px. Docker simulado.');
+ }else if(process.env.JUBART_DATABASE_QA==='1'){
+  await tab('databases');await click('#view-databases [data-db-engine=postgres]');
+  await wait('!!document.querySelector("[data-db-access=financeiro]")');await click('[data-db-access=financeiro]');
+  await wait('!!document.querySelector("#database-access-editor")');await set('#database-access-editor [name=user]','qa_access');
+  await click('#database-access-editor [data-generate-password]');const password=await evaluate('document.querySelector("#database-access-editor [name=password]").value');
+  await evaluate('document.querySelector("#database-access-editor-form").requestSubmit()');await wait('!!document.querySelector("#confirm-dialog")');
+  if(await evaluate(`document.querySelector("#confirm-review").textContent.includes(${JSON.stringify(password)})`))throw new Error('Senha na confirmação');
+  await click('#confirm-cancel');if(createdDatabaseUsers.length)throw new Error('Conta criada sem confirmação');
+  await evaluate('document.querySelector("#database-access-editor-form").requestSubmit()');await approve();await wait('!document.querySelector("#database-access-editor")');
+  if(createdDatabaseUsers.length!==1||!databaseLogins.some(d=>d.user==='qa_access'&&d.password===password))throw new Error('Acesso não foi criado e testado');
+  await tab('db-connections');await wait('document.querySelector("#database-connections-list")?.textContent.includes("qa_access")');
+  const connectionFile=path.join(root,'.panel-state/database-connections/connections.json'),beforeReset=await fs.readFile(connectionFile,'utf8');
+  if(beforeReset.includes(password))throw new Error('Senha persistida sem cifrar');
+  await evaluate('Array.from(document.querySelectorAll("#database-connections-list tr")).find(r=>r.textContent.includes("qa_access")).querySelector("[data-db-password]").click()');
+  await wait('!!document.querySelector("#database-password-reset")');const replacement='new-qa-password-123456';await set('#database-password-reset [name=password]',replacement);
+  await evaluate('document.querySelector("#database-password-reset-form").requestSubmit()');await wait('!!document.querySelector("#confirm-dialog")');await click('#confirm-cancel');
+  if(passwordChanges||await fs.readFile(connectionFile,'utf8')!==beforeReset)throw new Error('Senha mudou após cancelar');
+  await evaluate('document.querySelector("#database-password-reset-form").requestSubmit()');await approve();await wait('!document.querySelector("#database-password-reset")');
+  await evaluate('Array.from(document.querySelectorAll("#database-connections-list tr")).find(r=>r.textContent.includes("qa_access")).querySelector("button.action-icon-button").click()');
+  await wait('!!document.querySelector(".jubart-notice")');
+  for(let i=0;i<50&&!databaseLogins.some(d=>d.password===replacement);i++)await new Promise(r=>setTimeout(r,50));
+  if(passwordChanges!==1||!databaseLogins.some(d=>d.password===replacement))throw new Error('Senha não sincronizada com conexão');
+  await tab('databases');await click('[data-sql-database=financeiro]');await wait('!!document.querySelector("#sql-connect")');await click('#sql-connect');await wait('!!document.querySelector("#sql-console-form")');await click('#sql-console-dialog .icon-button');
+  for(const width of [1440,390]){await command('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width===390});await tab('db-connections');if(await evaluate('document.documentElement.scrollWidth>window.innerWidth'))throw new Error('Overflow em conexões');await fs.writeFile(`/tmp/jubart-database-access-${width}.png`,Buffer.from((await command('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));}
+  if(browserErrors.length)throw new Error(browserErrors.join('; '));
+  console.log('Database browser QA OK: criar/testar acesso, cancelar/confirmar, senha cifrada, redefinir/sincronizar senha, abrir console SQL e telas 1440/390px. Docker simulado.');
+ }else if(insecureHTTP){
   if(await evaluate('window.isSecureContext||typeof crypto.randomUUID!=="undefined"'))throw new Error('O teste exige HTTP sem crypto.randomUUID');
   await click('#profile-menu summary');await click('#logout');await wait('!!document.querySelector("#confirm-dialog")');await click('#confirm-cancel');await wait('!document.querySelector("#confirm-dialog")');
   if(!await evaluate('!!document.querySelector("#dashboard")'))throw new Error('Cancelar logout encerrou a sessão');

@@ -43,3 +43,6 @@ config/apps.server-staged.yaml
 /.git-publication-backup/
 
 /config/proxy-network.compose.yaml
+/config/proxy-hosts.json
+/docker/traefik/proxy-hosts.yml
+/config/erp.compose.yaml
