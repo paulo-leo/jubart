@@ -85,8 +85,9 @@ def parse_stats(raw, services):
 
 
 class Collector:
-    def __init__(self, root, compose, service=None, interface=None, host_only=False, http=False, proc=Path('/proc'), network=True):
-        self.root, self.compose, self.proc = root, compose, proc
+    def __init__(self, root, compose, service=None, interface=None, host_only=False, http=False, proc=None, network=True):
+        self.root, self.compose = root, compose
+        self.proc = Path(proc) if proc is not None else Path('/run/jubart-host/proc' if os.environ.get('JUBART_CONTAINER') == '1' else '/proc')
         self.service, self.interface, self.host_only, self.http = service, interface, host_only, http
         self.network = network
         self.previous_host = None

@@ -189,31 +189,28 @@ A estrutura permite combinar aplicações PHP, processos Node.js e sites estáti
 
 ### Dependências do host
 
-Use Linux com Docker Engine, plugin Docker Compose v2 ou superior, plugin Buildx e acesso ao daemon pelo usuário que instala. São necessários **Python 3.9+ com SSL**, `ca-certificates`, `tzdata`, shell POSIX e ferramentas usuais (`readlink`, `sed`, `id`, `ln`). Python costuma vir no Ubuntu, mas não é garantido em toda VPS. Git é necessário para clonar/atualizar; Node.js/npm e PHP não precisam estar instalados no host.
+Use Linux amd64 com **Docker Engine e acesso ao daemon local por socket Unix**, shell POSIX e ferramentas usuais (`readlink`, `stat`, `mktemp`, `mkfifo`, `id`, `ln`). Git é necessário para clonar/atualizar; Bash é usado pelo atalho `jubart dir`. **Python, Node.js, Compose, Buildx, certificados e dados de fuso da CLI vêm na imagem `paulo2021/jubart:cli-1.2.0`**. Não precisam ser instalados no host para executar `jubart` ou o instalador. O primeiro uso baixa a imagem; um checkout de desenvolvimento pode construir o runtime localmente com Docker e `tar`.
 
 Em Ubuntu/Debian, para os utilitários do host:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 ca-certificates tzdata git
+sudo apt-get install -y ca-certificates git
 sudo update-ca-certificates
 ```
 
 Instale o Docker Engine e os plugins seguindo o [guia oficial para Ubuntu](https://docs.docker.com/engine/install/ubuntu/) ou a documentação da sua distribuição. Não misture pacotes de origens diferentes. Verifique antes de instalar o Jubart:
 
 ```bash
-python3 --version
 docker version
-docker compose version
-docker buildx version
 docker info
 ```
 
-O instalador verifica as dependências e os certificados de confiança do host; não instala pacotes do sistema nem altera as permissões do socket Docker automaticamente. O acesso ao Docker concede controle administrativo sobre o host.
+O instalador verifica o acesso ao Docker e prepara o runtime da CLI. Não instala pacotes do sistema nem altera permissões do socket. Use `jubart compose ...` para executar Compose dentro do runtime, inclusive quando o plugin não está instalado no host. Os exemplos `docker compose ...` deste documento também funcionam diretamente se você tiver o plugin no host. O acesso ao Docker concede controle administrativo sobre o host.
 
 ### Instalação automática recomendada
 
-Clone ou baixe este repositório e abra um terminal na pasta que contém `compose.yaml` e `install.sh`. No Linux, com **Docker Engine/Compose v2 e Python 3** disponíveis e Docker acessível pelo seu usuário, execute na raiz do projeto:
+Clone ou baixe este repositório e abra um terminal na pasta que contém `compose.yaml` e `install.sh`. No Linux, com **Docker Engine** disponível e Docker acessível pelo seu usuário, execute na raiz do projeto:
 
 ```bash
 ./install.sh
@@ -223,9 +220,9 @@ Na primeira instalação, o assistente pergunta **usuário e senha do painel**, 
 
 A pasta dos projetos pode ficar fora do Jubart: para `/var/www/sspa-server`, informe `/var/www` como pasta dos projetos. O painel compartilhará essa pasta para acessar as aplicações; não é preciso mover o código para o repositório.
 
-O instalador prepara `.env`, caminhos e credenciais iniciais, constrói/inicia **somente o painel** e instala automaticamente o comando `jubart` em `/usr/local/bin`. Não exige Node.js no host: a preparação usa a imagem Node fixada no exemplo. Pode solicitar `sudo` apenas para instalar o atalho global. Execute como dono do repositório; não é necessário rodar todo o instalador com `sudo`.
+O instalador prepara `.env`, caminhos e credenciais iniciais, constrói/inicia **somente o painel** e instala automaticamente o comando `jubart` em `/usr/local/bin`. A CLI e o assistente executam em containers temporários independentes do painel, usando o mesmo UID/GID e grupos do usuário. O workspace mantém o caminho absoluto do host; projetos externos são visíveis para leitura e o atalho `dir` abre o Bash real do host. Não é necessário Python ou Node.js no host. Pode solicitar `sudo` apenas para instalar o atalho global. Execute como dono do repositório; não é necessário rodar todo o instalador com `sudo`.
 
-Credenciais personalizadas e configurações existentes são preservadas; ao detectar uma instalação já configurada, o assistente não sobrescreve esses dados. Para automações sem perguntas, use `./install.sh --non-interactive`: valores personalizados são mantidos e senhas de exemplo são substituídas por valores aleatórios. `--no-start` prepara a configuração e o comando sem iniciar o painel; combine com `--non-interactive` quando necessário. O instalador não abre firewall, instala Docker/Python, transfere código nem inicia todas as aplicações/bancos. Conclua esses apontamentos pelo assistente. Na primeira entrada, consulte `PANEL_USERNAME` e `PANEL_PASSWORD` no `.env`; o instalador não imprime os segredos.
+Credenciais personalizadas e configurações existentes são preservadas; ao detectar uma instalação já configurada, o assistente não sobrescreve esses dados. Para automações sem perguntas, use `./install.sh --non-interactive`: valores personalizados são mantidos e senhas de exemplo são substituídas por valores aleatórios. `--no-start` prepara a configuração e o comando sem iniciar o painel; combine com `--non-interactive` quando necessário. O instalador não abre firewall, instala Docker, transfere código nem inicia todas as aplicações/bancos. Conclua esses apontamentos pelo assistente. Na primeira entrada, consulte `PANEL_USERNAME` e `PANEL_PASSWORD` no `.env`; o instalador não imprime os segredos.
 
 <a id="erros-instalacao"></a>
 
@@ -233,7 +230,7 @@ Credenciais personalizadas e configurações existentes são preservadas; ao det
 
 | Mensagem/sintoma | O que verificar e como tratar |
 | --- | --- |
-| `python3: not found` | Instale Python 3.9+ no host; ele é usado pelo instalador e CLI Jubart. |
+| Falha ao obter a imagem da CLI | Confira acesso ao Docker Hub. Para construir a partir deste checkout, use `sh scripts/build-cli.sh`; o build usa somente arquivos públicos selecionados. Python e Node.js são instalados na imagem. |
 | Docker indisponível ou `permission denied` no socket | Confira `docker info`, o serviço Docker e o acesso do usuário. Não use `chmod 666` no socket. |
 | Compose ou Buildx ausente | Instale os plugins correspondentes à instalação do Docker Engine. |
 | `x509: certificate signed by unknown authority` ao buscar token no Docker Hub | Diferencie certificados do host, do painel e de builders externos; siga o diagnóstico abaixo. |
@@ -365,6 +362,7 @@ jubart time
 | Comando | Resultado |
 | --- | --- |
 | `jubart` | Console interativo com baleia da marca, versão, crédito do desenvolvedor e comandos rápidos |
+| `jubart compose COMANDO [OPÇÕES]` | Executa Docker Compose dentro da imagem da CLI, preservando o projeto e os arquivos da instalação |
 | `jubart help` | Lista de comandos; use também `jubart COMANDO --help` |
 | `jubart version` / `jubart --version` | Versão do código instalado |
 | `jubart panel` | Modo HTTP/HTTPS, portas e exemplo de túnel SSH para publicação local; consulta também o container |
@@ -415,7 +413,7 @@ jubart time
 | `jubart start` | Inicia somente o painel já construído |
 | `jubart restart` | Recria somente o painel, com confirmação, efetivando mudanças de `.env` |
 
-As consultas `proxies` e `proxy show` mostram os encaminhamentos gerenciados pelo Jubart sem alterar arquivos ou containers. `proxy show` inclui portas HTTP/HTTPS, acesso direto do painel/phpMyAdmin/bancos, email ACME, regras de métodos, IPs, horários e limites HTTP quando cadastrados. O cadastro salvo e os valores do `.env` são identificados separadamente; não constituem comprovação de recarga do Traefik ou do estado atual dos containers. Divergências no arquivo gerado dos hosts são indicadas. As consultas não imprimem senhas, chaves ou o `.env` completo. Exigem Node.js no host ou o painel em execução; arquivos privados são consultados pelo container quando necessário, e leituras incompletas são indicadas. No console, use `proxies`, `proxy show`, `proxy show app2` ou `proxy show "Relatórios"`, sem o prefixo `jubart`.
+As consultas `proxies` e `proxy show` mostram os encaminhamentos gerenciados pelo Jubart sem alterar arquivos ou containers. `proxy show` inclui portas HTTP/HTTPS, acesso direto do painel/phpMyAdmin/bancos, email ACME, regras de métodos, IPs, horários e limites HTTP quando cadastrados. O cadastro salvo e os valores do `.env` são identificados separadamente; não constituem comprovação de recarga do Traefik ou do estado atual dos containers. Divergências no arquivo gerado dos hosts são indicadas. As consultas não imprimem senhas, chaves ou o `.env` completo. Usam o Node.js incluído no runtime independente da CLI; arquivos privados são consultados pelo container quando necessário, e leituras incompletas são indicadas. No console, use `proxies`, `proxy show`, `proxy show app2` ou `proxy show "Relatórios"`, sem o prefixo `jubart`.
 
 O comando `jubart site` faz uma requisição GET local, com limite de 10 segundos por aplicação, sem imprimir o conteúdo da resposta. Respostas 2xx indicam resposta bem-sucedida; 3xx são informadas como redirecionamento sem seguir o destino; 4xx/5xx, falhas TLS e indisponibilidade retornam código 1. HTTPS preserva a validação do certificado e o domínio TLS. O teste não comprova acesso externo/firewall nem o funcionamento de todas as rotas.
 
@@ -525,7 +523,7 @@ O cadastro usa uma pasta já existente: a CLI não cria código, instala depend�
 
 As alterações sincronizam `config/apps.json`, os apontamentos do `.env`, `config/apps.compose.yaml` e as rotas geradas. A configuração anterior fica em `.panel-state/app-cli/<data-id>/before.json`, com permissões restritas. A CLI recusa aplicar uma revisão alterada por outra sessão. Se Docker falhar após salvar, o cadastro novo permanece e a mensagem informa como retomar. Aplicações com filas, jobs, Scheduler, WebSocket ou Mercure vinculados exigem gerenciar esses vínculos no painel antes de alterar o runtime ou remover o cadastro. Recarregue abas abertas do painel após alterações pela CLI.
 
-A gestão de aplicações reutiliza o código Node.js do painel. Usa Node.js no host quando disponível; caso contrário, executa o utilitário no container `panel` em execução. Nesse caso, a pasta do projeto precisa estar montada e acessível no painel, conforme `PANEL_PROJECTS_DIRECTORY`. As consultas de ajuda não dependem de Node.js ou Docker.
+A gestão de aplicações reutiliza os módulos Node.js incluídos na imagem independente da CLI, inclusive quando o painel está parado. O workspace é gravável pelo usuário original e projetos externos são montados para leitura. Alterações e exclusões continuam exigindo a confirmação existente. O runtime não recria aplicações ao abrir o comando `jubart`.
 
 Para alternar o acesso, execute `jubart http` ou `jubart ssh` e digite `yes` na confirmação do terminal. Somente após essa confirmação, o CLI salva a troca, recompila a imagem e recria o painel. Enter, outra resposta ou interrupção cancelam sem modificar a configuração. Os atalhos preservam a porta atual; use, por exemplo, `jubart http --port 9090` para mudá-la. A alteração sincroniza `.env` e o cadastro do painel em `config/apps.json` e desativa o acesso do painel por domínio/HTTPS. No modo HTTP, libere a porta no firewall e nas regras do provedor; no modo SSH, execute o túnel no seu computador. O atalho `jubart ssh` configura o acesso do painel e não altera o serviço SSH do servidor.
 
@@ -2339,6 +2337,8 @@ As aplicações extras reutilizam Dockerfile, versão PHP, extensões e INIs da 
 
 ### 🧰 Gerenciador de aplicações
 
+Os exemplos com `scripts/apps.py` desta seção pertencem ao utilitário legado e exigem Python no host. A instalação mínima e os comandos atuais `jubart apps`, `jubart app`, `jubart exec` e `jubart dir` usam o runtime em container e não dependem desse utilitário.
+
 Execute da pasta da infraestrutura (use `sudo` apenas se necessário):
 
 ```bash
@@ -4142,7 +4142,7 @@ jubart database access --engine postgres --database infra
 jubart database help
 ```
 
-Dentro do console `jubart>`, omita o prefixo `jubart`. As consultas exigem Docker e Node.js no host, ou o painel em execução como alternativa para executar o helper Node.js. Elas não criam contas nem alteram senhas.
+Dentro do console `jubart>`, omita o prefixo `jubart`. As consultas usam Docker e os helpers Node.js incluídos no runtime da CLI; o painel pode estar parado. Elas não criam contas nem alteram senhas.
 
 #### 🔐 Conexões cadastradas
 
@@ -4176,7 +4176,7 @@ Para aplicar a atualização visual, execute `sudo docker compose up -d --build 
 
 ### Versão do painel
 
-A versão atual do Jubart é `1.1.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
+A versão atual do Jubart é `1.2.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
 
 Para registrar uma nova versão, use `npm --prefix docker/panel version 1.1.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do Jubart e não altera versões das imagens ou das aplicações hospedadas.
 

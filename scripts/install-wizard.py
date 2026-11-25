@@ -96,7 +96,7 @@ def configure(root):
 
 if __name__ == '__main__':
     try:
-        configure(Path(__file__).resolve().parents[1])
+        configure(Path(os.environ.get('JUBART_ROOT', Path(__file__).resolve().parents[1])))
     except (ValueError, OSError, EOFError, KeyboardInterrupt) as error:
         print(f'Instalação interrompida: {error}', file=sys.stderr)
         sys.exit(1)

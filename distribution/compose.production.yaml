@@ -2,5 +2,5 @@
 # Requer Docker Compose com suporte à tag !reset.
 services:
   panel:
-    image: ${JUBART_IMAGE:-paulo2021/jubart:1.1.0}
+    image: ${JUBART_IMAGE:-paulo2021/jubart:1.2.0}
     build: !reset null

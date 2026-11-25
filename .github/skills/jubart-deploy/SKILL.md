@@ -17,10 +17,10 @@ Identifique o host, o diretório da instalação, a versão desejada e se o pedi
 
 Consulte as [tags no Docker Hub](https://hub.docker.com/r/paulo2021/jubart/tags) e a tag correspondente `vX.Y.Z` no GitHub. Não presuma que `latest` existe nem escolha uma atualização somente pelo número maior. Respeite a versão pedida e verifique sua disponibilidade; se o usuário pedir a mais recente, consulte as versões estáveis publicadas nos dois lugares.
 
-Para a versão selecionada, por exemplo `1.1.0`:
+Para a versão selecionada, por exemplo `1.2.0`:
 
 ```bash
-JUBART_VERSION=1.1.0
+JUBART_VERSION=1.2.0
 docker buildx imagetools inspect "paulo2021/jubart:$JUBART_VERSION"
 docker buildx imagetools inspect "paulo2021/jubart:$JUBART_VERSION" --format '{{json .Image}}'
 git ls-remote --tags https://github.com/paulo-leo/jubart.git "refs/tags/v$JUBART_VERSION" "refs/tags/v$JUBART_VERSION^{}"
@@ -28,7 +28,7 @@ git ls-remote --tags https://github.com/paulo-leo/jubart.git "refs/tags/v$JUBART
 
 Registre o digest do manifesto, plataforma e versão/revisão dos labels OCI quando disponíveis. A saída `.Image` permite verificar a plataforma e os labels sem baixar todas as camadas; em imagens multiarch, examine cada plataforma. Não invente um digest, label ausente ou prova de assinatura. Falha de rede/autenticação não comprova ausência da tag.
 
-Confira sistema/arquitetura (`uname -s`, `uname -m`), versões do Docker/Compose/Buildx, acesso ao daemon (`docker info`), Python 3.9+ com SSL, certificados, fuso horário e os utilitários requeridos pelo `install.sh` da versão escolhida. Use `docker context show` para confirmar o destino Docker. O instalador atual precisa do daemon local por socket Unix e das rotas desse mesmo host; não o execute contra um contexto Docker remoto. A plataforma atualmente validada é `linux/amd64`; não apresente ARM64 ou Windows/WSL como suportados sem validação dessa versão.
+Confira sistema/arquitetura (`uname -s`, `uname -m`), cliente Docker, acesso ao daemon (`docker info`), shell e os utilitários requeridos pelo `install.sh` da versão escolhida. **Da versão 1.2.0 em diante, Python, Node.js, Compose, Buildx, certificados e dados de fuso da CLI vêm em `paulo2021/jubart:cli-X.Y.Z`; não exija sua instalação no host.** Consulte também o manifesto da tag `cli-X.Y.Z` indicada em `config/cli-image`. Em releases anteriores, siga os requisitos daquela versão, que incluem Python no host. Use `docker context show` para confirmar o destino Docker. O instalador atual precisa do daemon local por socket Unix e das rotas desse mesmo host; não o execute contra um contexto Docker remoto. A plataforma atualmente validada é `linux/amd64`; não apresente ARM64 ou Windows/WSL como suportados sem validação dessa versão.
 
 O download público não exige o token do publicador. Nunca solicite `DOCKERHUB_TOKEN` do projeto para instalar o Jubart. Em limites/autenticação do Hub, use apenas credenciais que o usuário configure no próprio ambiente, sem colá-las na conversa.
 
@@ -36,31 +36,31 @@ O download público não exige o token do publicador. Nunca solicite `DOCKERHUB_
 
 Leia o `README.md`, `DOCKER_HUB.md`, `install.sh` e `distribution/compose.production.yaml` da versão escolhida. O [guia da imagem](https://github.com/paulo-leo/jubart/blob/main/distribution/dockerhub/README.md) apresenta o fluxo; para executar, prevalecem os arquivos da release selecionada.
 
-1. Prepare os requisitos ausentes no host autorizado, seguindo a documentação da distribuição. Clone a tag `vX.Y.Z` em um diretório novo; não sobreponha uma instalação existente. Compare o campo `version` de `docker/panel/package.json` com a versão da imagem e a revisão Git com o label OCI quando disponível.
+1. Prepare somente os requisitos realmente necessários no host autorizado, seguindo a documentação da distribuição. Não instale Python/Node/Compose no host para compensar uma falha no runtime 1.2+: diagnostique o Docker e a imagem da CLI. Clone a tag `vX.Y.Z` em um diretório novo; não sobreponha uma instalação existente. Compare o campo `version` de `docker/panel/package.json` com a versão da imagem e a revisão Git com o label OCI quando disponível.
 2. Na raiz do checkout, execute `./install.sh --no-start`. O assistente interativo coleta dados e prepara o workspace sem construir/iniciar o painel. Sem terminal interativo, `--non-interactive --no-start` gera a configuração inicial; adapte somente os valores solicitados, mantenha o `.env` restrito e não mostre credenciais geradas. Não improvise senhas de exemplo para uma instalação real.
 3. Copie `distribution/compose.production.yaml` para `compose.production.yaml` na raiz. Acrescente esse arquivo **por último** ao valor atual de `COMPOSE_FILE` no `.env`, sem duplicar entradas ou apagar os arquivos gerados. Preserve as aspas e a sintaxe do `.env`. O override usa `!reset` para remover `build` do painel.
 4. Defina `JUBART_IMAGE` com a imagem escolhida; prefira `paulo2021/jubart@sha256:DIGEST_VERIFICADO` quando precisar fixar o conteúdo. Não copie literalmente esse marcador. Preserve as outras variáveis. Valide e inicie somente o painel:
 
 ```bash
-docker compose --profile '*' config --quiet
-docker compose pull panel
-docker compose up -d --no-deps panel
+./jubart compose --profile '*' config --quiet
+./jubart compose pull panel
+./jubart compose up -d --no-deps panel
 ./jubart panel
 ```
 
-Não substitua a validação por imprimir `docker compose config` completo: a expansão inclui credenciais. Use `--quiet`; se precisar inspecionar o modelo, processe internamente e apresente apenas campos não secretos do serviço em análise.
+Não substitua a validação por imprimir `jubart compose config` completo: a expansão inclui credenciais. Use `--quiet`; se precisar inspecionar o modelo, processe internamente e apresente apenas campos não secretos do serviço em análise.
 
 O modo privado/local ou túnel SSH é o padrão. Ajustar publicação em `0.0.0.0`, firewall ou HTTPS depende do acesso solicitado pelo usuário; não exponha o painel para facilitar um teste. `jubart http`/`ssh` modificam o acesso e pedem `yes`; não são consultas. Não use `yes |` para contornar a confirmação interativa.
 
 ## Instalação existente e atualização
 
-Comece em leitura com `./jubart version`, `./jubart status`, `./jubart panel` e `docker compose ps -a`. Identifique o diretório real, contexto Docker, projeto Compose e arquivos efetivos. Compare a imagem em execução com a imagem configurada e o digest de destino; versão da CLI sozinha não comprova atualização do container.
+Comece em leitura com `./jubart version`, `./jubart status`, `./jubart panel` e `./jubart compose ps -a`. Identifique o diretório real, contexto Docker, projeto Compose e arquivos efetivos. Compare a imagem em execução com a imagem configurada e o digest de destino; versão da CLI sozinha não comprova atualização do container.
 
 Antes de atualizar, preserve `.env`, `PANEL_VAULT_KEY`, `.panel-state`, configurações locais, projeto Compose, caminhos, montagens e volumes. Guarde cópias restritas dos arquivos alterados e identifique a imagem anterior para recuperação. Não regenere credenciais nem reconstrua o `.env` a partir de um modelo público. Não execute o assistente de primeira instalação para substituir uma configuração existente.
 
 Atualize o workspace para a mesma release da imagem, conciliando alterações locais; não use `git reset --hard` nem um checkout forçado para eliminar conflitos. Inspecione o override existente antes de alterá-lo. Acrescente-o a `COMPOSE_FILE` somente se faltar, mantendo os demais arquivos. Se ele estiver ausente e for necessário, use o modelo da release escolhida, preservando customizações.
 
-Altere apenas `JUBART_IMAGE` para a tag/digest verificado e execute `config --quiet`, `pull panel` e `up -d --no-deps panel`. Não use `--build` na atualização pela imagem publicada. Não recrie bancos, proxy e aplicações como consequência de atualizar o painel.
+Atualize também o runtime selecionado em `config/cli-image` com o checkout correspondente; `JUBART_CLI_IMAGE` permite escolher outra imagem compatível para recuperação. Não mude a imagem de um painel em execução por consequência de baixar o runtime. Altere apenas `JUBART_IMAGE` para a tag/digest verificado e execute `config --quiet`, `pull panel` e `up -d --no-deps panel`. Não use `--build` na atualização pela imagem publicada. Não recrie bancos, proxy e aplicações como consequência de atualizar o painel.
 
 Após falha de recriação, consulte o container e os logs limitados do painel; não repita a instalação inteira. Um rollback autorizado deve restaurar também os arquivos de configuração/workspace compatíveis, além da imagem anterior. Verifique migrações e compatibilidade do estado antes de prometer reversão. Não remova volumes, use `down -v` ou faça `prune` para corrigir instalação/atualização.
 

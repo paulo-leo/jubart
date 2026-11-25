@@ -69,6 +69,12 @@ class JubartTest(unittest.TestCase):
             self.assertIn('Erro: comando ou opção inválida', errors.getvalue())
         self.assertEqual(cli.service_label('healthy'), 'saudável')
 
+    def test_compose_passthrough_preserves_options_root_and_exit_status(self):
+        with patch.object(cli.subprocess, 'run', return_value=subprocess.CompletedProcess([], 7)) as launch:
+            code, output, error = self.run_cli(['compose', '--profile', '*', 'config', '--quiet'])
+        self.assertEqual(code, 7)
+        launch.assert_called_once_with(['docker', 'compose', '--profile', '*', 'config', '--quiet'], cwd=self.root)
+
     def test_default_command_displays_whale_credit_and_quick_commands_without_env_or_docker(self):
         (self.root / '.env').unlink()
         with patch.object(cli, 'compose') as compose:
@@ -892,6 +898,9 @@ esac
         shutil.copy(SOURCE / 'install.sh', self.root)
         shutil.copy(SOURCE / 'jubart', self.root)
         (self.root / 'scripts').mkdir()
+        shutil.copy(SOURCE / 'scripts/cli-runtime.sh', self.root / 'scripts')
+        (self.root / 'config').mkdir()
+        (self.root / 'config/cli-image').write_text('test/jubart:cli-test\n')
         shutil.copy(SOURCE / 'scripts/jubart.py', self.root / 'scripts')
         shutil.copy(SOURCE / 'scripts/jubart_metrics.py', self.root / 'scripts')
         shutil.copy(SOURCE / 'scripts/jubart_automation.py', self.root / 'scripts')
@@ -902,10 +911,13 @@ esac
         fake_bin = self.root / 'fake-bin'
         fake_bin.mkdir()
         binary = fake_bin / 'docker'
-        binary.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$JUBART_TEST_LOG"\ncase "$*" in *"ps --all"*) echo "[]";; esac\n')
+        binary.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$JUBART_TEST_LOG"\ncase "$*" in *"jubart.py version"*) echo "Jubart 1.0.0";; *"ps --all"*) echo "[]";; esac\n')
         binary.chmod(0o755)
         socket = self.root / 'docker.sock'
-        socket.touch()
+        import socket as socket_module
+        listener = socket_module.socket(socket_module.AF_UNIX)
+        listener.bind(str(socket))
+        self.addCleanup(listener.close)
         fake_ip = fake_bin / 'ip'
         fake_ip.write_text('#!/bin/sh\necho \"[]\"\n')
         fake_ip.chmod(0o755)
@@ -919,11 +931,10 @@ esac
         self.assertEqual((installed / 'jubart').resolve(), self.root / 'jubart')
         calls = log.read_text()
         self.assertIn('node scripts/initialize-local.mjs', calls)
-        self.assertIn('--network none', calls)
+        self.assertIn('--network host', calls)
         self.assertIn('JUBART_PROXY_AUTOINIT=true', calls)
-        self.assertIn(str(socket)+':/var/run/docker.sock', calls)
+        self.assertIn('src='+str(socket)+',dst=/var/run/docker.sock', calls)
         self.assertIn('compose up -d --build --no-deps panel', calls)
-        self.assertIn('buildx version', calls)
         self.assertIn('test -s /etc/ssl/certs/ca-certificates.crt', calls)
         result = subprocess.run([str(installed / 'jubart'), 'version'], cwd='/tmp', env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)

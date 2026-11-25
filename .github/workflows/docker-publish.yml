@@ -58,6 +58,8 @@ jobs:
               raise SystemExit('A versão deve usar o formato X.Y.Z, sem prefixo v.')
           if lock['version'] != version or lock['packages']['']['version'] != version:
               raise SystemExit('As versões do package.json e do lockfile devem coincidir.')
+          if Path('config/cli-image').read_text().strip() != 'paulo2021/jubart:cli-' + version:
+              raise SystemExit('config/cli-image deve selecionar o runtime da mesma versão.')
           ref = os.environ['GITHUB_REF']
           tagged = ref.startswith('refs/tags/')
           if tagged and ref != 'refs/tags/v' + version:
@@ -104,6 +106,16 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: python3 scripts/test-release-image.py "paulo2021/jubart:$VERSION"
 
+      - name: Construir runtime independente da CLI
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: sh scripts/build-cli.sh "paulo2021/jubart:cli-$VERSION"
+
+      - name: Testar instalação e console sem dependências do host
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: python3 scripts/test-cli-runtime.py "paulo2021/jubart:cli-$VERSION"
+
       - name: Conferir credencial de publicação
         if: steps.release.outputs.publish == 'true'
         env:
@@ -125,15 +137,20 @@ jobs:
         if: steps.release.outputs.publish == 'true'
         env:
           IMAGE: paulo2021/jubart:${{ steps.release.outputs.version }}
+          CLI_IMAGE: paulo2021/jubart:cli-${{ steps.release.outputs.version }}
         run: |
-          if docker buildx imagetools inspect "$IMAGE" > /tmp/manifest.txt 2> /tmp/manifest-error.txt; then
-            echo "::error::A versão $IMAGE já existe. Incremente a versão para publicar uma nova release."
-            exit 1
-          elif ! grep -Eq '(not found|manifest unknown)' /tmp/manifest-error.txt; then
-            cat /tmp/manifest-error.txt >&2
-            exit 1
-          fi
+          for target in "$CLI_IMAGE" "$IMAGE"; do
+            if docker buildx imagetools inspect "$target" > /tmp/manifest.txt 2> /tmp/manifest-error.txt; then
+              echo "::error::A versão $target já existe. Incremente a versão para publicar uma nova release."
+              exit 1
+            elif ! grep -Eq '(not found|manifest unknown)' /tmp/manifest-error.txt; then
+              cat /tmp/manifest-error.txt >&2
+              exit 1
+            fi
+          done
+          docker push "$CLI_IMAGE"
           docker push "$IMAGE"
+          docker buildx imagetools inspect "$CLI_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           docker buildx imagetools inspect "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resumir validação
@@ -142,6 +159,7 @@ jobs:
           PUBLISHED: ${{ steps.release.outputs.publish }}
         run: |
           echo "Imagem validada: paulo2021/jubart:$VERSION (linux/amd64)." >> "$GITHUB_STEP_SUMMARY"
+          echo "CLI validada: paulo2021/jubart:cli-$VERSION (linux/amd64)." >> "$GITHUB_STEP_SUMMARY"
           if [ "$PUBLISHED" = true ]; then
             echo 'Publicada no Docker Hub. Nenhum deploy foi executado.' >> "$GITHUB_STEP_SUMMARY"
           else

@@ -28,7 +28,7 @@ import jubart_databases
 import jubart_proxies
 import jubart_terminal as terminal
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get('JUBART_ROOT', Path(__file__).resolve().parent.parent))
 SCREEN = None
 
 def read_env(root):
@@ -667,10 +667,13 @@ def print_server_time(env):
     section('Data e hora do servidor', '🕒')
     properties = {}
     try:
-        result = subprocess.run(['timedatectl', 'show', '--property=Timezone', '--property=NTPSynchronized',
-                                 '--property=NTP', '--property=LocalRTC'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            properties = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        if os.environ.get('JUBART_CONTAINER') == '1':
+            text = (Path(os.environ['JUBART_CONTROL']) / 'time').read_text()
+        else:
+            result = subprocess.run(['timedatectl', 'show', '--property=Timezone', '--property=NTPSynchronized',
+                                     '--property=NTP', '--property=LocalRTC'], capture_output=True, text=True, timeout=5)
+            text = result.stdout if result.returncode == 0 else ''
+        properties = dict(line.split('=', 1) for line in text.splitlines() if '=' in line)
     except (OSError, subprocess.TimeoutExpired):
         pass
     now = datetime.now(timezone.utc)
@@ -928,6 +931,14 @@ def open_app_shell(root, args):
         descriptor = sys.stdin.fileno()
         attributes = termios.tcgetattr(descriptor)
         try:
+            if args.app_action == 'host' and os.environ.get('JUBART_CONTAINER') == '1':
+                control = Path(os.environ['JUBART_CONTROL'])
+                (control / 'response').unlink(missing_ok=True)
+                with (control / 'request').open('w') as request:
+                    request.write('dir\n'+str(cwd)+'\n')
+                while not (control / 'response').exists():
+                    time.sleep(.05)
+                return int((control / 'response').read_text().strip())
             return subprocess.run(command, cwd=cwd).returncode
         except OSError:
             raise ValueError('Não foi possível iniciar o shell. Confira o executável, a pasta e as permissões de acesso.')
@@ -1240,6 +1251,7 @@ def parser():
         proxy_parsers.append(operation)
     proxy.set_defaults(proxy_help_parser=proxy, proxy_help_parsers=proxy_parsers)
     commands.add_parser('apps', help='listar aplicações salvas, tipos e domínios')
+    commands.add_parser('compose', help='executar Docker Compose pelo runtime: jubart compose COMANDO [OPÇÕES]')
     for name, action, description in [('exec', 'shell', 'abrir o shell no container da aplicação'),
                                       ('dir', 'host', 'abrir Bash na pasta da aplicação no host')]:
         shortcut = commands.add_parser(name, help=description, description=description+'. Digite exit para voltar ao Jubart.')
@@ -1299,10 +1311,17 @@ def parser():
 
 def main(argv=None):
     cli = parser()
-    args = cli.parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    start = 2 if raw[:1] == ['--root'] else 1 if raw and raw[0].startswith('--root=') else 0
+    compose_arguments = raw[start+1:] if raw[start:start+1] == ['compose'] else None
+    args = cli.parse_args(raw[:start+1] if compose_arguments is not None else raw)
     root = args.root.expanduser().resolve()
     try:
         version = json.loads((root / 'docker/panel/package.json').read_text())['version']
+        if args.command == 'compose':
+            def execute_compose():
+                return subprocess.run(['docker', 'compose', *compose_arguments], cwd=root).returncode
+            return full_screen_command(execute_compose) if SCREEN else execute_compose()
         if args.command == 'help':
             cli.print_help()
             print('\nExemplo: jubart panel --host 203.0.113.10 --ssh-user ubuntu\nOpções por comando: jubart panel --help')

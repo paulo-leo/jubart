@@ -2,4 +2,11 @@
 # Resolve the installed symlink so invocation works from any directory.
 set -eu
 JUBART_COMMAND=$(readlink -f -- "$0")
-exec python3 "$(dirname -- "$JUBART_COMMAND")/scripts/jubart.py" "$@"
+JUBART_SOURCE=$(dirname -- "$JUBART_COMMAND")
+JUBART_ROOT=$JUBART_SOURCE
+case "${1:-}" in
+  --root) [ "$#" -ge 2 ] || { echo 'Informe a pasta da instalação após --root.' >&2; exit 1; }; JUBART_ROOT=$(CDPATH= cd -- "$2" && pwd -P) ;;
+  --root=*) JUBART_ROOT=$(CDPATH= cd -- "${1#--root=}" && pwd -P) ;;
+esac
+. "$JUBART_SOURCE/scripts/cli-runtime.sh"
+jubart_runtime python3 /usr/local/lib/jubart/scripts/jubart.py "$@"

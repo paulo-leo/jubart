@@ -15,13 +15,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 cd "$JUBART_ROOT"
-for JUBART_TOOL in docker python3 readlink ip stat; do
+for JUBART_TOOL in docker readlink stat mktemp mkfifo; do
   command -v "$JUBART_TOOL" >/dev/null 2>&1 || { echo "Instale $JUBART_TOOL antes de continuar." >&2; exit 1; }
 done
-python3 -c 'import ssl, zoneinfo; zoneinfo.ZoneInfo("UTC"); assert ssl.create_default_context().get_ca_certs(), "Instale ca-certificates no host."' || { echo 'Python 3.9+ com SSL, dados de fuso horário (tzdata) e ca-certificates são necessários. Consulte o README.' >&2; exit 1; }
-docker compose version >/dev/null
-docker buildx version >/dev/null || { echo 'Instale o plugin Docker Buildx. Consulte o README.' >&2; exit 1; }
-docker info >/dev/null 2>&1 || { echo 'Docker indisponível. Inicie o daemon e conceda acesso ao seu usuário.' >&2; exit 1; }
+. "$JUBART_ROOT/scripts/cli-runtime.sh"
+jubart_runtime_prepare
 case "$JUBART_BIN" in /*) ;; *) echo '--bin-dir precisa ser um caminho absoluto.' >&2; exit 1 ;; esac
 JUBART_LINK=$JUBART_BIN/jubart
 if [ -e "$JUBART_LINK" ] || [ -L "$JUBART_LINK" ]; then
@@ -33,25 +31,14 @@ if [ ! -d "$JUBART_BIN" ] || [ ! -w "$JUBART_BIN" ]; then
   sudo -v
 fi
 if [ "$JUBART_INTERACTIVE" = true ]; then
-  python3 scripts/install-wizard.py
+  jubart_runtime python3 /usr/local/lib/jubart/scripts/install-wizard.py
 fi
-JUBART_NODE_IMAGE=$(sed -n 's/^NODE_VERSION=//p' .env.example)
-[ -n "$JUBART_NODE_IMAGE" ] || { echo 'Imagem de inicialização não encontrada.' >&2; exit 1; }
 echo 'Preparando configuração local; valores personalizados serão preservados…'
-# Inspect only the local Docker daemon and the host route tables when choosing a subnet.
-if [ -n "${DOCKER_CONTEXT:-}" ]; then
-  JUBART_DOCKER_ENDPOINT=$(docker context inspect --format '{{.Endpoints.docker.Host}}')
-else
-  JUBART_DOCKER_ENDPOINT=${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}
-fi
-case "$JUBART_DOCKER_ENDPOINT" in unix://*) JUBART_DOCKER_SOCKET=${JUBART_DOCKER_ENDPOINT#unix://} ;; *) echo 'A reserva automática requer Docker local por socket Unix e as rotas do mesmo host.'; exit 1 ;; esac
-JUBART_HOST_ROUTES=$(ip -j -4 route show table all)
-export JUBART_HOST_ROUTES
-docker run --rm --network none --user "$(id -u):$(id -g)" --group-add "$(stat -c %g "$JUBART_DOCKER_SOCKET")" -v "$JUBART_DOCKER_SOCKET:/var/run/docker.sock" -e JUBART_PROXY_AUTOINIT=true -e JUBART_HOST_ROUTES -v "$JUBART_ROOT:/workspace" -w /workspace -e "JUBART_HOST_DIRECTORY=$JUBART_ROOT" "node:$JUBART_NODE_IMAGE" node scripts/initialize-local.mjs
+jubart_runtime sh -c 'export JUBART_HOST_ROUTES="$(ip -j -4 route show table all)"; export JUBART_PROXY_AUTOINIT=true JUBART_HOST_DIRECTORY="$JUBART_ROOT"; exec node scripts/initialize-local.mjs'
 if [ "$JUBART_START" = true ]; then
   echo 'Construindo e iniciando o painel Jubart…'
-  docker compose up -d --build --no-deps panel || { echo 'Falha ao construir/iniciar o painel. Consulte a seção Erros de instalação no README; para x509 verifique os certificados do host e do painel.' >&2; exit 1; }
-  docker compose exec -T panel sh -c 'test -s /etc/ssl/certs/ca-certificates.crt' || { echo 'Certificados ausentes no painel. Confira o Dockerfile e recompile; consulte o README.' >&2; exit 1; }
+  jubart_runtime docker compose up -d --build --no-deps panel || { echo 'Falha ao construir/iniciar o painel. Consulte a seção Erros de instalação no README.' >&2; exit 1; }
+  jubart_runtime docker compose exec -T panel sh -c 'test -s /etc/ssl/certs/ca-certificates.crt' || { echo 'Certificados ausentes no painel. Confira o Dockerfile e recompile; consulte o README.' >&2; exit 1; }
 fi
 if [ -d "$JUBART_BIN" ] && [ -w "$JUBART_BIN" ]; then
   ln -sfn -- "$JUBART_ROOT/jubart" "$JUBART_LINK"
