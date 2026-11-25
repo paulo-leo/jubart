@@ -49,6 +49,8 @@ A publicação verifica se a tag já existe e interrompe o envio nesse caso. Par
 
 O texto público do Docker Hub fica em [distribution/dockerhub/README.md](distribution/dockerhub/README.md), com logo, funcionalidades, requisitos, instalação pela imagem pronta e atualização. A logo PNG é uma renderização do `icon.svg` oficial, mantida em [distribution/dockerhub/logo.png](distribution/dockerhub/logo.png).
 
+A apresentação inclui um prompt copiável e links para a [skill Jubart Deploy](.github/skills/jubart-deploy/SKILL.md), voltada à instalação, atualização e diagnóstico por IA com acesso autorizado ao host. A skill é distribuída pelo GitHub e pode ser consultada diretamente pela URL Markdown; não depende de reconstruir a imagem `1.1.0`. A [skill MCP existente](.github/skills/jubart-mcp/SKILL.md) cobre as operações remotas expostas pelo painel depois da instalação.
+
 O workflow [Docker Hub - apresentação](.github/workflows/dockerhub-description.yml) sincroniza a descrição curta e o overview ao alterar esses arquivos na `main`. Também pode ser executado manualmente em Actions. Essa atualização usa `DOCKERHUB_TOKEN` e não publica outra imagem nem altera a tag `1.1.0`.
 
 A API de edição de informações do repositório pode exigir permissão administrativa adicional à de push. Se a sincronização retornar acesso negado, edite as permissões do PAT no Docker Home para **Repo Read, Write, Delete**, conforme os [requisitos da ação de sincronização](https://github.com/peter-evans/dockerhub-description#action-inputs). O workflow só altera a descrição; não executa exclusões. Depois, execute novamente o workflow de apresentação.

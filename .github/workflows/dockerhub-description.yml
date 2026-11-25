@@ -6,6 +6,7 @@ on:
     paths:
       - distribution/dockerhub/README.md
       - distribution/dockerhub/logo.png
+      - .github/skills/jubart-deploy/**
       - .github/workflows/dockerhub-description.yml
   workflow_dispatch:
 

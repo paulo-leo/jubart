@@ -12,6 +12,8 @@
 
 O GitHub Actions testa e constrói a imagem do painel para publicação em `paulo2021/jubart` por tags de versão. Veja como configurar o token, publicar e instalar no [guia do Docker Hub](DOCKER_HUB.md).
 
+Para instalar ou atualizar com um assistente de IA, use a [skill Jubart Deploy](.github/skills/jubart-deploy/SKILL.md). Ela orienta a consulta de versões/digests, a instalação pelo Compose e o diagnóstico no host. Depois da instalação, a [integração MCP](docs/MCP.md) oferece consultas e operações de aplicações conforme as permissões configuradas.
+
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![PHP](https://img.shields.io/badge/Runtime-PHP-777BB4?logo=php&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Runtime-Node.js-339933?logo=node.js&logoColor=white)

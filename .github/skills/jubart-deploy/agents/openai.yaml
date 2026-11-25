@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jubart Deploy"
+  short_description: "Instalar e administrar o Jubart pelo Docker Hub"
+  default_prompt: "Use $jubart-deploy para verificar a imagem oficial no Docker Hub, preparar ou atualizar a instalação solicitada e conferir seu estado."

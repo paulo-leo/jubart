@@ -8,6 +8,32 @@ Painel de infraestrutura para administrar aplicações web, containers, domínio
 
 [Código-fonte](https://github.com/paulo-leo/jubart) · [Documentação completa](https://github.com/paulo-leo/jubart/blob/main/README.md) · [Versão 1.1.0](https://github.com/paulo-leo/jubart/tree/v1.1.0) · [Suporte e problemas](https://github.com/paulo-leo/jubart/issues)
 
+## Instalação e administração com IA
+
+O Jubart oferece uma **skill pública para assistentes de IA** verificarem a imagem oficial no Docker Hub e conduzirem uma instalação, atualização ou diagnóstico pelo terminal do host autorizado.
+
+- [Abrir a skill Jubart Deploy](https://github.com/paulo-leo/jubart/blob/main/.github/skills/jubart-deploy/SKILL.md)
+- [Ler as instruções diretamente em Markdown](https://raw.githubusercontent.com/paulo-leo/jubart/main/.github/skills/jubart-deploy/SKILL.md)
+
+A skill orienta o assistente a consultar versões e digests reais, verificar os requisitos da máquina, baixar a imagem, preparar o Compose e conferir o painel. Nas atualizações, preserva configurações, credenciais e volumes existentes. Baixar a imagem pública não exige o token do publicador.
+
+Você pode enviar este pedido ao seu assistente:
+
+```text
+Leia e use a skill:
+https://raw.githubusercontent.com/paulo-leo/jubart/main/.github/skills/jubart-deploy/SKILL.md
+
+Verifique a versão estável disponível do Jubart no Docker Hub e no GitHub.
+Quero instalar usando a imagem publicada nesta máquina. Identifique os
+requisitos e o diretório de destino antes de executar, preserve qualquer
+instalação existente e mantenha o acesso administrativo por túnel SSH.
+Ao finalizar, informe a versão, o digest, o estado e como acessar o painel.
+```
+
+O assistente precisa de ferramentas de execução local ou SSH autorizado para realizar a instalação. A skill é um guia; abrir esta página não executa comandos nem concede acesso à máquina. Em agentes com suporte a skills, importe a pasta `jubart-deploy` do repositório conforme as instruções do seu editor.
+
+**Depois da instalação**, a [integração MCP do Jubart](https://github.com/paulo-leo/jubart/blob/main/docs/MCP.md) permite consultar contexto, saúde e logs e operar aplicações, WebSockets e filas/jobs conforme as permissões concedidas. A [skill Jubart MCP](https://github.com/paulo-leo/jubart/blob/main/.github/skills/jubart-mcp/SKILL.md) orienta essas operações. Configure a chave no armazenamento de segredos do cliente; não é necessário enviá-la na conversa. O MCP não instala o servidor nem fornece shell arbitrário.
+
 ## O que você pode administrar
 
 - **Aplicações:** PHP/FrankenPHP, Node.js e sites estáticos; cadastro, domínio, pasta do projeto e acesso ao terminal.
