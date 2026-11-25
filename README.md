@@ -10,7 +10,7 @@
 
 # Jubart — painel de infraestrutura para aplicações web
 
-Publicação futura de imagens: consulte o [guia e as pendências para o Docker Hub](DOCKER_HUB.md).
+O GitHub Actions testa e constrói a imagem do painel para publicação em `paulo2021/jubart` por tags de versão. Veja como configurar o token, publicar e instalar no [guia do Docker Hub](DOCKER_HUB.md).
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![PHP](https://img.shields.io/badge/Runtime-PHP-777BB4?logo=php&logoColor=white)
