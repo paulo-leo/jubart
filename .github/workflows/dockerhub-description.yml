@@ -1,0 +1,38 @@
+name: Docker Hub - apresentação
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - distribution/dockerhub/README.md
+      - distribution/dockerhub/logo.png
+      - .github/workflows/dockerhub-description.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-description
+  cancel-in-progress: false
+
+jobs:
+  description:
+    name: Publicar descrição e apresentação
+    if: github.repository == 'paulo-leo/jubart' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Obter apresentação
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sincronizar página do Docker Hub
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
+        with:
+          username: paulo2021
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: paulo2021/jubart
+          short-description: 'Jubart: painel de infraestrutura com apps, proxy Traefik, bancos, backups e CLI.'
+          readme-filepath: distribution/dockerhub/README.md

@@ -45,6 +45,16 @@ O workflow exige que a tag `vX.Y.Z` corresponda exatamente à versão do painel 
 
 A publicação verifica se a tag já existe e interrompe o envio nesse caso. Para corrigir uma release publicada, incremente a versão. Apenas a tag explícita de versão é enviada; `latest` não é atualizado automaticamente. O fluxo não faz deploy nem altera a infraestrutura em execução.
 
+### Apresentação do repositório no Docker Hub
+
+O texto público do Docker Hub fica em [distribution/dockerhub/README.md](distribution/dockerhub/README.md), com logo, funcionalidades, requisitos, instalação pela imagem pronta e atualização. A logo PNG é uma renderização do `icon.svg` oficial, mantida em [distribution/dockerhub/logo.png](distribution/dockerhub/logo.png).
+
+O workflow [Docker Hub - apresentação](.github/workflows/dockerhub-description.yml) sincroniza a descrição curta e o overview ao alterar esses arquivos na `main`. Também pode ser executado manualmente em Actions. Essa atualização usa `DOCKERHUB_TOKEN` e não publica outra imagem nem altera a tag `1.1.0`.
+
+A API de edição de informações do repositório pode exigir permissão administrativa adicional à de push. Se a sincronização retornar acesso negado, edite as permissões do PAT no Docker Home para **Repo Read, Write, Delete**, conforme os [requisitos da ação de sincronização](https://github.com/peter-evans/dockerhub-description#action-inputs). O workflow só altera a descrição; não executa exclusões. Depois, execute novamente o workflow de apresentação.
+
+A logo no corpo do overview é independente do ícone de cubo do cabeçalho. A [documentação do programa Docker-Sponsored Open Source](https://docs.docker.com/docker-hub/repos/manage/trusted-content/dsos-program/#repository-logo) descreve a personalização do ícone por repositório para organizações participantes; o envio da imagem ou do README não modifica esse ícone.
+
 ### Limites da validação
 
 A imagem é validada para **linux/amd64**. ARM64 e Windows/WSL ainda não foram validados. O teste isolado não monta o socket Docker e não administra serviços reais; uma instalação de teste ainda é necessária para validar as operações da infraestrutura completa.
