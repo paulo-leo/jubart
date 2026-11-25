@@ -41,12 +41,7 @@ A plataforma publicada e validada é **linux/amd64**. ARM64 e execução no Wind
 
 O comando `docker pull` baixa o painel pronto. A instalação completa também precisa dos arquivos Compose e do workspace do GitHub. **Um `docker run` isolado não prepara a infraestrutura.**
 
-### 1. Baixar os arquivos da versão
-
-```bash
-git clone --branch v1.1.0 --depth 1 https://github.com/paulo-leo/jubart.git
-cd jubart
-```
+### 1. Preparar o host e baixar os arquivos
 
 Para instalar Docker Engine e os plugins, siga o [guia oficial da sua distribuição](https://docs.docker.com/engine/install/). Para os utilitários do host no Ubuntu/Debian:
 
@@ -54,6 +49,13 @@ Para instalar Docker Engine e os plugins, siga o [guia oficial da sua distribui�
 sudo apt-get update
 sudo apt-get install -y python3 ca-certificates tzdata git iproute2
 sudo update-ca-certificates
+```
+
+Com os requisitos instalados, baixe os arquivos da versão:
+
+```bash
+git clone --branch v1.1.0 --depth 1 https://github.com/paulo-leo/jubart.git
+cd jubart
 ```
 
 ### 2. Preparar a instalação
