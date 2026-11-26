@@ -8,5 +8,11 @@ case "${1:-}" in
   --root) [ "$#" -ge 2 ] || { echo 'Informe a pasta da instalação após --root.' >&2; exit 1; }; JUBART_ROOT=$(CDPATH= cd -- "$2" && pwd -P) ;;
   --root=*) JUBART_ROOT=$(CDPATH= cd -- "${1#--root=}" && pwd -P) ;;
 esac
+# The host agent must remain outside the runtime container.
+case "${1:-}" in
+  host-agent) shift; if [ "${1:-}" = --install ] && [ "$#" -eq 1 ]; then exec bash "$JUBART_SOURCE/scripts/install-host-agent.sh" "$JUBART_ROOT"; fi; [ "$#" -eq 0 ] || { echo 'Use jubart host-agent na instalação desejada.' >&2; exit 1; }; exec bash "$JUBART_SOURCE/scripts/host-agent.sh" "$JUBART_ROOT" ;;
+  --root) if [ "${3:-}" = host-agent ]; then shift 3; [ "$#" -eq 0 ] || exit 1; exec bash "$JUBART_SOURCE/scripts/host-agent.sh" "$JUBART_ROOT"; fi ;;
+  --root=*) if [ "${2:-}" = host-agent ]; then shift 2; [ "$#" -eq 0 ] || exit 1; exec bash "$JUBART_SOURCE/scripts/host-agent.sh" "$JUBART_ROOT"; fi ;;
+esac
 . "$JUBART_SOURCE/scripts/cli-runtime.sh"
 jubart_runtime python3 /usr/local/lib/jubart/scripts/jubart.py "$@"

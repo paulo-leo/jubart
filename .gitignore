@@ -46,3 +46,6 @@ config/apps.server-staged.yaml
 /config/proxy-hosts.json
 /docker/traefik/proxy-hosts.yml
 /config/erp.compose.yaml
+
+# Comunicação e saídas privadas do agente de Bash no host.
+/.jubart-host-agent/

@@ -99,7 +99,7 @@ export function publicPlan(plan){
   app:Object.fromEntries(['id',...fields].map(field=>[field,app[field]]))};
 }
 
-export async function applyApp(root,request,expected,{run=execute}={}){
+export async function applyApp(root,request,expected,{run=execute,guard=async()=>{}}={}){
  const plan=await planApp(root,request);
  if(!expected||plan.revision!==expected)fail('Configuração alterada desde a revisão. Execute o comando novamente.');
  const lock=path.join(plan.root,'config/.jubart-cli-apps.lock');
@@ -113,6 +113,7 @@ export async function applyApp(root,request,expected,{run=execute}={}){
   catch{fail('Docker não concluiu a operação. Confira Docker, permissões, configuração e logs dos serviços.');}
  };
  try{
+  await guard(plan);
   const token=randomBytes(6).toString('hex');
   const envStage=path.join(plan.root,'.jubart-cli-'+token+'.env');
   const runtimeStage=path.join(plan.root,'config/.jubart-cli-'+token+'.yaml');
@@ -138,11 +139,14 @@ export async function applyApp(root,request,expected,{run=execute}={}){
    const output=await docker(['compose','ps','--all','--format','json']);
    const rows=output.trim().startsWith('[')?JSON.parse(output):output.split('\n').filter(Boolean).map(line=>JSON.parse(line));
    if(rows.some(row=>row.Service===slots[plan.id].service)){
+    await guard(plan);
     await docker(['compose','--profile','*','stop','--timeout','30',slots[plan.id].service]);
+    await guard(plan);
     await docker(['compose','--profile','*','rm','-f',slots[plan.id].service]);
    }
   }
   if((await planApp(root,request)).revision!==expected)fail('Configuração alterada antes da gravação. Execute o comando novamente.');
+  await guard(plan);
   const written=[];
   try{
    for(const [name,content]of plan.files){

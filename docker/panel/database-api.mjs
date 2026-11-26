@@ -1,8 +1,10 @@
+import {createHash} from 'node:crypto';
 import {preparePasswordSync} from './database-password-sync.mjs';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { parseEnv, atomicWrite, databaseEnabled } from './core.mjs';
 import { engines, identifier, accountHost, protectAccount, protectDatabase, passwordValue, createVault, createDatabaseSQL, createUserSQL, changePasswordSQL, lockSQL, accessSQL, mariaInventorySQL, pgInventorySQL, encryptPassword } from './databases.mjs';
+export const backupRevision=text=>createHash('sha256').update(text).digest('hex');
 const backupFields = ['enabled','directory','schedule','timezone','retentionDays','maxAgeHours','runOnStart','databases','remoteEnabled','remotePrefix','s3Provider','s3Bucket','s3Region','s3Endpoint','s3AccessKeyId','s3SecretAccessKey','s3EnvAuth'];
 const suffixes = {enabled:'ENABLED',directory:'DIRECTORY',schedule:'SCHEDULE',timezone:'TIMEZONE',retentionDays:'RETENTION_DAYS',maxAgeHours:'MAX_AGE_HOURS',runOnStart:'RUN_ON_START',databases:'DATABASES',remoteEnabled:'REMOTE_ENABLED',remotePrefix:'REMOTE_PREFIX',s3Provider:'S3_PROVIDER',s3Bucket:'S3_BUCKET',s3Region:'S3_REGION',s3Endpoint:'S3_ENDPOINT',s3AccessKeyId:'S3_ACCESS_KEY_ID',s3SecretAccessKey:'S3_SECRET_ACCESS_KEY',s3EnvAuth:'S3_ENV_AUTH'};
 export function validCron(expression) {
@@ -91,13 +93,13 @@ export function createDatabaseAPI({root,compose,readEnv,startOperation,composeCo
       if(typeof data.name!=='string'||data.name.length>255||!new RegExp(`^${engine}-[A-Za-z0-9_.-]+\\.sql\\.gz$`).test(data.name)||data.name.includes('..'))throw new Error('Nome de backup inválido.');
       return {status:202,body:{operation:startOperation(`Excluir backup local · ${engine}`,()=>compose(['exec','-T',backupService(engine),'python3','/opt/backup/backup.py','delete',data.name],undefined,{timeout:10000}))}};
     }
-    if(action==='backup-run')return {status:202,body:{operation:startOperation(`Backup imediato · ${engine}`,()=>compose(['run','--rm','--no-deps',backupService(engine),'once'],undefined,{timeout:1800000}))}};
+    if(action==='backup-run')return {status:202,body:{operation:startOperation(`Backup imediato · ${engine}`,async()=>{if(data.expectedRevision&&backupRevision(await readEnv())!==data.expectedRevision)throw Object.assign(new Error('Configuração de backup alterada. Gere uma nova prévia.'),{status:409});if(typeof data.beforeBackupApply==='function')await data.beforeBackupApply();await compose(['run','--rm','--no-deps',backupService(engine),'once'],undefined,{timeout:1800000});})}};
     if(action==='backup-settings'){
-      const env=parseEnv(await readEnv());const config={...backupConfig(env,engine),...data};validateBackup(config,root);
+      const before=await readEnv();if(data.expectedRevision&&backupRevision(before)!==data.expectedRevision)throw Object.assign(new Error('Configuração de backup alterada. Gere uma nova prévia.'),{status:409});const env=parseEnv(before);const config={...backupConfig(env,engine),...data};validateBackup(config,root);
       const prefix=engine==='mariadb'?'BACKUP_':'PG_BACKUP_',values={};
       for(const field of backupFields){if((field==='s3AccessKeyId'||field==='s3SecretAccessKey')&&!data[field])continue;values[prefix+suffixes[field]]=String(config[field]);}
       return {status:202,body:{operation:startOperation(`Configurar backup · ${engine}`,async()=>{
-        const old=await readEnv(),remaining=new Set(Object.keys(values));let next=old.split('\n').map(line=>{const name=line.split('=',1)[0];if(!Object.hasOwn(values,name))return line;remaining.delete(name);return `${name}='${values[name]}'`;}).join('\n');
+        const old=await readEnv();if(data.expectedRevision&&backupRevision(old)!==data.expectedRevision)throw Object.assign(new Error('Configuração de backup alterada. Gere uma nova prévia.'),{status:409});if(typeof data.beforeBackupApply==='function')await data.beforeBackupApply();const remaining=new Set(Object.keys(values));let next=old.split('\n').map(line=>{const name=line.split('=',1)[0];if(!Object.hasOwn(values,name))return line;remaining.delete(name);return `${name}='${values[name]}'`;}).join('\n');
         for(const key of remaining)next+=`\n${key}='${values[key]}'`;
         const staged=path.join(root,'.env.panel-staged');try{await atomicWrite(staged,next);await compose(['config','--quiet'],staged);}finally{await fs.unlink(staged).catch(()=>{});}
         await fs.mkdir(path.join(root,'.panel-state'),{recursive:true,mode:0o700});await atomicWrite(path.join(root,'.panel-state/env-before-backup-settings'),old);

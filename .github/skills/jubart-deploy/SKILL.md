@@ -17,10 +17,10 @@ Identifique o host, o diretório da instalação, a versão desejada e se o pedi
 
 Consulte as [tags no Docker Hub](https://hub.docker.com/r/paulo2021/jubart/tags) e a tag correspondente `vX.Y.Z` no GitHub. Não presuma que `latest` existe nem escolha uma atualização somente pelo número maior. Respeite a versão pedida e verifique sua disponibilidade; se o usuário pedir a mais recente, consulte as versões estáveis publicadas nos dois lugares.
 
-Para a versão selecionada, por exemplo `1.2.0`:
+Para a versão selecionada, por exemplo `1.3.0`:
 
 ```bash
-JUBART_VERSION=1.2.0
+JUBART_VERSION=1.3.0
 docker buildx imagetools inspect "paulo2021/jubart:$JUBART_VERSION"
 docker buildx imagetools inspect "paulo2021/jubart:$JUBART_VERSION" --format '{{json .Image}}'
 git ls-remote --tags https://github.com/paulo-leo/jubart.git "refs/tags/v$JUBART_VERSION" "refs/tags/v$JUBART_VERSION^{}"

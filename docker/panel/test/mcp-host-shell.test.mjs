@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
+import {createHostShells} from '../mcp-host-shell.mjs';
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+test('Bash no host: usuário real, pasta cadastrada, ownership, idempotência, saída e revogação',async t=>{
+ const root=await fs.mkdtemp('/tmp/jubart-host-shell-test-'),directory=root+'/project';await fs.mkdir(directory);const stat=await fs.stat(directory),allowed=new Set(['owner','other']);let busy=false;
+ const manager=createHostShells({root,resolveLocation:async app=>{if(app!=='app2')throw new Error('App não cadastrada');return {app,directory,identity:{dev:String(stat.dev),ino:String(stat.ino)}};},authorize:async id=>allowed.has(id),onBusy:value=>{busy=value;},heartbeatMs:100});
+ const agent=spawn('bash',[path.resolve(import.meta.dirname,'../../../scripts/host-agent.sh'),root],{stdio:['ignore','pipe','pipe']});let errors='';agent.stderr.on('data',data=>{errors+=data;});
+ t.after(async()=>{await manager.dispose();agent.kill('SIGTERM');await Promise.race([new Promise(resolve=>agent.once('exit',resolve)),pause(3000)]);await fs.rm(root,{recursive:true,force:true});});
+ for(let index=0;index<60&&!(await manager.agent()).available;index++)await pause(50);assert.equal((await manager.agent()).available,true,errors);assert.equal((await manager.agent()).uid,process.getuid());
+ const key={id:'owner',scopes:['execute'],actions:['terminal.host']},other={...key,id:'other'};await assert.rejects(manager.open({...key,actions:[]},{app:'app2',requestId:randomUUID()}),error=>error.status===403);
+ const request={app:'app2',requestId:randomUUID()},opened=await manager.open(key,request);assert.equal(opened.state,'open',errors);assert.equal(opened.hostUid,process.getuid());assert.equal((await manager.open(key,request)).sessionId,opened.sessionId);assert.equal(busy,true);
+ await assert.rejects(manager.read(other,{sessionId:opened.sessionId}),error=>error.status===404);await assert.rejects(manager.open(key,{app:'app2',requestId:randomUUID()}),error=>error.status===409);
+ await manager.input(key,{sessionId:opened.sessionId,data:"pwd\nprintf '__JUBART_%s__\\n' 'HOST_OK'\n"});let output='',cursor=0;for(let index=0;index<50;index++){const part=await manager.read(key,{sessionId:opened.sessionId,cursor});cursor=part.cursor;output+=part.output;if(output.includes('__JUBART_HOST_OK__'))break;await pause(50);}assert.ok(output.includes(directory),output);assert.ok(output.includes('__JUBART_HOST_OK__'),output);assert.equal((await manager.read(key,{sessionId:opened.sessionId,cursor})).output,'');
+ allowed.delete('owner');for(let index=0;index<50&&await manager.hasApp('app2');index++)await pause(100);assert.equal(await manager.hasApp('app2'),false,errors);for(let index=0;index<20&&busy;index++)await pause(25);assert.equal(busy,false);
+});
+test('Bash no host: agente ausente retorna instrução e não cria sessão',async t=>{const root=await fs.mkdtemp('/tmp/jubart-host-offline-');const manager=createHostShells({root,resolveLocation:async()=>{},authorize:async()=>true});t.after(async()=>{await manager.dispose();await fs.rm(root,{recursive:true,force:true});});await assert.rejects(manager.open({id:'owner',scopes:['execute'],actions:['terminal.host']},{app:'main',requestId:randomUUID()}),error=>error.status===503&&error.message.includes('host-agent'));});

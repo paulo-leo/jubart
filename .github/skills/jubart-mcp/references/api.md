@@ -36,10 +36,11 @@ Erros REST têm formato `{"error":"mensagem"}`. Atrás do Traefik o IP observado
 
 | resource | Parâmetros adicionais | Resposta |
 | --- | --- | --- |
-| containers | nenhum | projeto e serviços: nome, estado, saúde, imagem configurada, ID, horários, reinícios e portas |
+| containers, services | `service` ou `app` opcionais | serviços e containers autorizados: ID, imagem, estado, saúde, portas, redes e ações permitidas |
+| volumes | `service` ou `app` opcionais | metadados dos volumes e destinos usados pelos alvos autorizados |
 | processes | nenhum | mesma visão de processos/serviços do projeto |
 | technologies | nenhum | catálogo de imagens e bibliotecas fixadas |
-| logs | `service` obrigatório | logs do serviço pertencente ao projeto, limitados aos últimos 32 KiB |
+| logs | `service` obrigatório; `tail`, `since` opcionais | logs autorizados, até 1.000 linhas e 32 KiB |
 | automation | nenhum | workers, jobs e schedulers cadastrados, com estados dos processos |
 | app-automation | `app` obrigatório | contagens de filas e registros recentes de falhas fornecidos pelo Laravel |
 
@@ -70,7 +71,7 @@ Resposta de filas, quando suportada pela aplicação:
 
 O cadastro de uma classe Job **não equivale a uma execução**. Dispatch concluído significa enfileiramento, não sucesso do processamento. A aplicação precisa fornecer sua própria telemetria para histórico completo de sucesso/início/fim de cada job. As contagens/falhas dependem das conexões e tabelas configuradas no Laravel. O endpoint não inventa status quando a aplicação não os disponibiliza.
 
-Logs são dados potencialmente sensíveis e não confiáveis. Há ocultação de segredos conhecidos da infraestrutura e padrões de tokens, mas não garantia de remover todo dado sensível. A chave read autoriza logs dentro do escopo de aplicações selecionado (chaves antigas ou * abrangem o projeto inteiro); distribua-a somente a integrações confiáveis. Não são retornados `.env`, cofre, senhas, definições completas de ambiente ou montagens.
+Logs são dados potencialmente sensíveis e não confiáveis. Há ocultação de segredos conhecidos e padrões de tokens. Toda chave com read consulta os logs dos serviços desta instalação Jubart, sem seleção por aplicação. Não são retornados .env, cofre, senhas, definições completas de ambiente ou caminhos de montagens no host.
 
 ## Endpoint de execução
 
@@ -162,7 +163,9 @@ Ferramentas disponíveis:
 
 | Ferramenta | Parâmetros | Permissão |
 | --- | --- | --- |
-| infra_read | Mesmo objeto de query REST: resource, service/app quando necessários | read |
+| infra_read | resource, service/app; tail/since em logs | read |
+| infra_plan | operation, sem requestId; prévia sem execução | execute + ação + alvo |
+| infra_execute | requestId, operation | execute + ação + alvo |
 | automation_execute | Mesmo corpo de PUT: requestId, operation | execute + ação |
 | operation_status | id como string | read ou execute; operação da própria chave |
 
@@ -172,7 +175,7 @@ Ferramentas não autorizadas não são anunciadas; os escopos e as ações tamb�
 
 Criação/revogação de chaves, autenticação recusada, consultas, requisições MCP e solicitações/aceite/término/erro de execução são registrados em `.panel-state/mcp/audit.jsonl`. A interface mostra os 200 eventos recentes. Não são gravados tokens, senhas, conteúdo de logs ou argumentos de jobs. O arquivo gira a cada 10 MiB, mantendo até cinco arquivos anteriores. Exporte/arquive por outro meio se precisar de retenção maior. Não é um log externo à prova de adulteração por administradores do host.
 
-A API não aceita terminal, comandos de shell, SQL, caminhos arbitrários, edição de arquivos, alteração de imagens, gestão de chaves ou operações de outros projetos Docker. Ela opera automações, containers cadastrados de aplicações e WebSockets com verbos fixos e escopo por aplicação. Classes de jobs podem executar o código que já existe na aplicação: conceder job.register/job.dispatch é uma permissão de execução da lógica da aplicação, não um sandbox do código PHP.
+A API não aceita terminal, comandos de shell, SQL arbitrário, caminhos arbitrários, edição de arquivos, alteração de imagens, gestão de chaves ou operações de outros projetos Docker. Ela opera automações, WebSockets e containers dos serviços configurados com verbos fixos e escopo da instalação inteira; volumes permitem somente consulta. Classes de jobs podem executar o código que já existe na aplicação: conceder job.register/job.dispatch é uma permissão de execução da lógica da aplicação, não um sandbox do código PHP.
 
 A Skill em `.github/skills/jubart-mcp/SKILL.md` orienta o diagnóstico e o uso autorizado. A Skill não concede permissões e não substitui os controles do servidor.
 
@@ -200,16 +203,16 @@ Estes endpoints exigem **cookie de sessão administrativa** e, nas alterações,
 
 Exemplo de corpo de criação: `{"name":"VS Code diagnóstico","scopes":["read"],"actions":[],"expiresInDays":90}`. Não use essas rotas como alternativa aos escopos da integração.
 
-## Contexto ampliado e escopo por aplicação
+## Contexto ampliado e escopo da instalação
 
-Chaves novas aceitam `applications: ["main", "app2"]` ou `["*"]` (inclui futuras). O painel exige seleção explícita. Para compatibilidade, chaves antigas sem esse campo mantêm o acesso anterior; revogue e recrie para restringir. Leituras de containers, logs e automações respeitam a seleção; tecnologias são informações compartilhadas. Operações de job/worker verificam a aplicação do cadastro, e job.dispatch exige worker da mesma aplicação. Nenhuma permissão nova é concedida automaticamente a chaves antigas.
+A unidade de acesso é a instalação Jubart inteira. Toda chave read, antiga ou nova, monitora todas as aplicações, serviços, containers e volumes desta instalação. Campos antigos applications/services enviados na criação são aceitos por compatibilidade e não restringem alvos. Escopos read/execute e a lista exata de ações continuam sendo exigidos. O filtro app apenas refina a consulta.
 
 `infra_read` com `resource: "context"` retorna:
 
 ```json
 {
   "observedAt": "2026-11-11T12:00:00.000Z",
-  "capabilities": {"scopes":["read","execute"],"actions":["application.restart"],"applications":["main"],"noArbitraryCommands":true},
+  "capabilities": {"scopes":["read","execute"],"actions":["application.restart"],"scope":"infrastructure","applications":["*"],"services":["*"],"noArbitraryCommands":true},
   "applications": [{"id":"main","service":"php","revision":"revisao-do-cadastro"}],
   "services": [{"name":"php","state":"running","health":"healthy"}],
   "automation": {"workers":[],"jobs":[],"schedulers":[]},
@@ -219,7 +222,7 @@ Chaves novas aceitam `applications: ["main", "app2"]` ou `["*"]` (inclui futuras
 }
 ```
 
-Resposta ilustrativa abreviada. A revisão real deve ser obtida na consulta. Context não retorna .env, credenciais, diretórios do host ou comandos cadastrados de inicialização. `resource: "guide"` retorna `{skill, reference}` em Markdown. As visões `applications`, `health`, `websockets`, `executions` oferecem contexto operacional; as quatro têm o mesmo envelope, e WebSocket detalhado/revisão são consultados em context ou websockets. Execuções recentes são apenas recibos desta chave, até 30; não são histórico universal de sucesso de jobs. `app-automation` continua necessário para estatísticas/falhas reais do Laravel.
+Resposta ilustrativa abreviada. A revisão real deve ser obtida na consulta. Context não retorna .env, credenciais, diretórios do host ou comandos cadastrados de inicialização. `resource: "guide"` retorna `{skill, reference}` em Markdown. As visões `applications`, `websockets`, `executions` oferecem contexto operacional; as três têm o mesmo envelope, e WebSocket detalhado/revisão são consultados em context ou websockets. Execuções recentes são apenas recibos desta chave, até 30; não são histórico universal de sucesso de jobs. `app-automation` continua necessário para estatísticas/falhas reais do Laravel.
 
 Use `infra_execute` (alias compatível `automation_execute`) ou `PUT /api/ai/execute`:
 
@@ -233,7 +236,7 @@ Use `infra_execute` (alias compatível `automation_execute`) ou `PUT /api/ai/exe
 | websocket.start, websocket.stop, websocket.restart | action, app | Controla somente o servidor WebSocket cadastrado; início/reinício exigem configuração aplicada. |
 | websocket.configure | action, app, revision, enabled, port, origins | Revision é websocketRevision. Enabled é booleano; porta inteira 1024–65535; origins é lista de 1–20 hosts, sem protocolo/porta/curinga. Preserva provedor, comando, imagem, domínio e TLS. Aplica só o container WebSocket. |
 
-Todas exigem escopo execute, ação exata na chave e aplicação autorizada. Os campos desconhecidos são rejeitados. Para consultar context, logs e guia, exige-se read. Para acompanhar uma operação própria, read ou execute. UUID requestId idempotente por chave e intenção; mesmo UUID com payload diferente retorna 409. Reinício/parada interrompe conexões e não desfaz efeitos de tarefas. Não há acesso ao terminal, SQL, .env, firewall, volumes, bancos, configuração global, troca de imagem ou criação arbitrária de comandos. A API executa somente ações fixas sobre IDs cadastrados; código do projeto previamente configurado continua sendo executado pelos containers.
+Todas exigem execute, ação exata na chave e alvo desta instalação. Os campos desconhecidos são rejeitados. Para consultar context, logs e guia, exige-se read. Para acompanhar uma operação própria, read ou execute. UUID requestId idempotente por chave e intenção; mesmo UUID com payload diferente retorna 409. Reinício/parada interrompe conexões e não desfaz efeitos de tarefas. Não há terminal, SQL arbitrário, escrita de .env, firewall, remoção de volumes, administração de usuários dos bancos, configuração global, troca de imagem ou comandos arbitrários. Volumes permitem leitura e containers de bancos podem ser controlados somente pelas ações explícitas de container. A API executa somente ações fixas sobre IDs cadastrados; código do projeto previamente configurado continua sendo executado pelos containers.
 
 ### Instalação da Skill
 
@@ -241,7 +244,7 @@ No painel, use **Abrir Skill**, **Baixar SKILL.md** e **Baixar referência da Sk
 
 ### Prévia de execução
 
-Antes de executar, use `infra_plan` com `{ "operation": { ... } }`, ou `POST /api/ai/plan` com esse mesmo corpo e Bearer. Exige execute, ação específica e aplicação autorizada. Retorna comandos previstos e impactos, sem executar nem reservar a operação. Depois envie `infra_execute` com requestId UUID e a mesma operação. A execução revalida permissões e revisões.
+Antes de executar, use `infra_plan` com `{ "operation": { ... } }`, ou `POST /api/ai/plan` com esse mesmo corpo e Bearer. Exige execute, ação específica e alvo desta instalação. Retorna comandos previstos e impactos, sem executar nem reservar a operação. Depois envie `infra_execute` com requestId UUID e a mesma operação. A execução revalida permissões e revisões.
 
 ## Panorama e modelo de ambiente
 
@@ -249,6 +252,142 @@ Consulte `infra_read` com `{"resource":"configuration"}` ou `GET /api/ai/read?re
 
 A resposta inclui `revision`, `scope`, `current.values` (seleção permitida de variáveis não secretas), `current.applications`, `template.content` (modelo público `.env.example` com segredos substituídos por `__GENERATE_LOCALLY__`) e instruções de entrega. `template.available=false` informa modelo ausente. `template.currentValuesApplied=false`: o modelo não incorpora a configuração atual; o agente deve planejar as alterações com essa distinção.
 
-Somente chaves com todas as aplicações (`*`, ou escopo legado equivalente) recebem a seleção de valores globais atuais. Chaves limitadas recebem somente variáveis permitidas das próprias aplicações. O modelo público permanece disponível para planejamento de uma nova instalação, sem segredos de produção.
+Toda chave com read recebe os valores globais atuais permitidos e os das aplicações desta instalação. O filtro opcional app reduz as aplicações da resposta, sem limitar a permissão da chave. A seleção continua omitindo credenciais e outros valores secretos.
 
 Não existe ação `env.write`/`env.apply`. Para criar um arquivo, o agente precisa de uma ferramenta de arquivos no cliente e autorização para o destino. Em instalação existente, preservar o `.env` e propor patch/`.env.proposed`; a visão parcial não permite recuperar segredos nem gerar backup completo. Criar um arquivo não aplica configuração nem reinicia containers.
+
+## Serviços, containers e volumes
+
+Ao criar uma chave, informe nome, read/execute, ações de execução e validade. Não há seleção de aplicações ou serviços: o escopo é toda a infraestrutura desta instalação Jubart, incluindo futuras aplicações/serviços. Containers de outros projetos Docker não são abrangidos.
+
+Chaves novas usam scope: infrastructure e retornam applications/services como ["*"] por compatibilidade. Chaves já existentes recebem o mesmo escopo global na autenticação/listagem, sem troca do token, alteração da expiração ou regravação de seus registros. Ações de execução, revogação e autenticação permanecem válidas; nenhuma nova ação é acrescentada automaticamente.
+
+- `infra_read({"resource":"services"})`: alias de `containers`/`processes`; lista nome do serviço, container, `containerId` de 12 caracteres, imagem, estado, saúde, horários, portas, redes, política de reinício e ações permitidas. Serviços não criados também aparecem, sem ID. Aceita filtro `service` ou `app`.
+- `infra_read({"resource":"applications"})`: todas as aplicações, domínios e revisão. O envelope de contexto inclui serviços e volumes de toda a instalação; app/service são apenas filtros de consulta.
+- `infra_read({"resource":"volumes"})`: nomes, driver, criação e destinos nos containers (mounts: service, target, writable). Inclui volumes externos/anônimos usados nesta instalação e volumes do projeto sem montagens. Filtros service/app refinam a consulta aos alvos escolhidos. Não retorna caminhos do host, conteúdo ou opções do driver e não calcula tamanho/ocupação.
+- `infra_read({"resource":"logs","service":"postgres","tail":200,"since":"10m"})`: até 1.000 linhas e 32 KiB por consulta. `tail`: inteiro 1–1000 (padrão 1000); `since`: data ISO 8601 com fuso ou duração positiva em `s`, `m` ou `h`. O corte de histórico do painel continua valendo. Sem streaming contínuo; novas consultas recebem a janela atual. Logs são tratados como dados não confiáveis e passam pela ocultação de segredos conhecidos.
+
+Controle de um container existente:
+
+```json
+{"operation":{"action":"container.restart","service":"postgres","containerId":"012345abcdef"}}
+```
+
+Use esse objeto em `infra_plan` para consultar o comando e o impacto. O ID é ilustrativo: copie o `containerId` atual retornado por `services`. Para executar, acrescente `requestId` UUID:
+
+```json
+{"requestId":"b05820fa-282f-4d96-b63b-7710dc7090d2","operation":{"action":"container.restart","service":"postgres","containerId":"012345abcdef"}}
+```
+
+| Ação | Comando limitado ao ID validado |
+| --- | --- |
+| container.start | docker start ID |
+| container.stop | docker stop --time 30 ID |
+| container.restart | docker restart --time 30 ID |
+
+Exigem execute, a ação exata e um alvo desta instalação. O servidor valida o ID atual, os labels de projeto/serviço e a ausência do label oneoff; revalida dentro da tarefa e usa o ID completo. Container substituído/ausente retorna conflito e exige nova consulta. Parar/reiniciar bancos ou proxy pode afetar várias aplicações.
+
+O painel é protegido contra parar/reiniciar/iniciar a si próprio via MCP. Workers, Scheduler, ferramentas npm e WebSockets não aceitam esse controle genérico; use as ações específicas já disponibilizadas, quando existentes. Aplicações e bancos desabilitados não podem ser iniciados/reiniciados por essa rota. Não cria containers, não aplica configuração, não constrói imagens, não remove nem renova volumes. Finalização do comando Docker não atesta saúde funcional: consulte estado, healthcheck e logs depois.
+
+Idempotência, acompanhamento e auditoria são compartilhados com as ações anteriores. Repetir o mesmo requestId/payload não executa novamente; resultado incerto exige diagnóstico antes de outra intenção. O plano não reserva o alvo nem concede permissões extras.
+
+## Inventário ampliado somente de leitura
+
+Todos os recursos abaixo usam infra_read / GET /api/ai/read e exigem read para toda esta instalação, sem restrição por app. São anunciados em capabilities.resources na consulta context. Além de containers/services, volumes, applications e configuration:
+
+| resource | O que consultar |
+| --- | --- |
+| overview | Panorama com contagens de aplicações, serviços, containers criados, volumes, proxies, bancos e contas; mantém resultados parciais por fonte |
+| proxies, routes | Domínios, destinos IP/DNS/container e porta, métodos HTTP, HTTPS, cabeçalho Host, listas de IP, políticas e configuração das rotas de apps, painel, WebSockets e hosts de proxy |
+| redirects | Redirecionamentos HTTP→HTTPS, distinguindo cadastro salvo e configuração no ambiente |
+| databases | Bancos MariaDB/PostgreSQL, contas/roles, grants conhecidos, conexões não secretas e contagens |
+| database-users | Mesmo inventário de bancos, com lista de contas/roles e grants |
+| users | Separa databaseUsers (contas dos bancos) e panelUsers (contas do painel), com contagens |
+| panel-users | Contas do painel, inclusive administrador inicial, estado, perfil e permissões; sem hashes/salts/senhas |
+| topology | Relações app→proxy→banco/cache, domínio, porta, redes, estado e destinos das montagens; sem caminhos do host |
+| certificates | Validade dos certificados no inventário ACME, domínios, emissor e configuração de renovação; sem chaves privadas e sem reiniciar o Traefik |
+| host | CPU, RAM, swap, carga e tempo ligado do host Linux/VM Docker |
+| metrics | CPU/RAM/tráfego por container, métricas HTTP do Traefik e histórico curto; primeira amostra de taxas pode ser null |
+
+Exemplos de argumentos para infra_read:
+
+```json
+{"resource":"overview"}
+{"resource":"proxies"}
+{"resource":"redirects"}
+{"resource":"databases","engine":"postgres"}
+{"resource":"users"}
+{"resource":"topology"}
+{"resource":"configuration"}
+```
+
+engine é opcional: all (padrão), mariadb ou postgres; aplica-se ao inventário de bancos, database-users, users e overview. Nenhum desses recursos recebe SQL, comandos, senhas ou arquivos arbitrários do cliente. São executadas apenas as consultas fixas de catálogo compartilhadas com a CLI. Não consulta conteúdo de tabelas da aplicação e não administra bancos ou contas.
+
+Databases retorna servers, counts, observedCounts e complete. Cada servidor informa status available, disabled ou unavailable e suas próprias contagens. Counts só informa um total quando todos os servidores selecionados foram consultados; caso contrário os totais são null. ObservedCounts soma apenas os inventários disponíveis. Zero significa inventário consultado e vazio. Servidor parado, desabilitado ou com erro de autenticação nunca comprova ausência de dados.
+
+MariaDB exclui schemas internos e conta contas por nome+host. PostgreSQL exclui templates, inclui postgres e conta roles fora de pg_%, inclusive roles sem login. Grants PostgreSQL mostra CONNECT efetivo; não é inventário completo de privilégios de tabelas/schemas. As contagens são limitadas a esses critérios e aos motores gerenciados nesta instalação; não incluem bancos externos só referenciados por aplicações. Contas do painel são distintas de contas dos bancos e do SSH do host.
+
+Proxies/redirects mostram cadastro salvo e a projeção da configuração, incluindo hostFileMatches dos hosts. Não comprovam que o Traefik recarregou o arquivo nem validam DNS/HTTP/alcance dos destinos. Não expõem arquivos de rotas arbitrários, middlewares externos desconhecidos ou segredos. Configuration inclui portas/configuração pública do proxy, versões e limites configurados dos containers; continua sendo uma seleção não secreta, sem backup completo do .env.
+
+## Operacionalidade dos serviços
+
+Para responder se os serviços estão funcionando, use `infra_read` com `{"resource":"health"}` (alias `operational`), ou `GET /api/ai/read?resource=health`. Exige read para esta instalação inteira. app/service são filtros opcionais; não são fronteiras de permissão. Não há URL, caminho, SQL ou comando livre fornecido pelo cliente.
+
+O resultado tem status geral, services e applications, com estado observado, expected, checks, dependências, issues, sources, startedAt e observedAt. Com filtros, infrastructureStatus mantém o resultado da instalação inteira e status descreve o recorte consultado. Cada evidência indica o teste realizado, resultado, código HTTP quando aplicável e limitação.
+
+| status | Significado |
+| --- | --- |
+| operational | As verificações disponíveis e listadas passaram; não é garantia de todas as funções do produto |
+| degraded | Processo ativo com falha detectada, dependência não operacional ou falha na rota da aplicação |
+| unavailable | Container esperado parado/ausente; no agregado, todos os alvos ativos indisponíveis |
+| unknown | Sem evidência suficiente, fonte indisponível, healthcheck starting, autenticação/permissão não confirmada ou rota não testada |
+| disabled | Serviço/funcionalidade desativado intencionalmente; não conta como falha |
+
+São cruzados Docker/healthcheck, HTTP interno de aplicações/painel/phpMyAdmin/páginas de erro, endpoint de métricas do proxy, GET pelo Traefik com Host do domínio cadastrado, consultas fixas de catálogo dos bancos e PING autenticado do Valkey. As dependências declaradas no Compose e destinos DB_HOST/REDIS_HOST podem degradar uma aplicação cujo HTTP isolado responde. Um processo running sem healthcheck nem teste adicional permanece unknown. Workers/jobs não são disparados, reiniciados nem interrompidos para testar.
+
+O GET tem timeout de 2 segundos, não lê corpos nem segue redirecionamentos; 2xx/3xx comprova resposta nesse ponto, 5xx indica falha e 4xx mantém a confirmação desconhecida (pode haver autenticação ou política de acesso). O diagnóstico não valida HTTPS externo, DNS público, login, entrega de WebSocket ou conclusão de jobs. Para TLS e filas, correlacione certificates, logs, automation e app-automation sem inferir sucesso.
+
+Amostras são reutilizadas por até 5 segundos, com horários preservados. HTTP tem até seis testes concorrentes e deixa de iniciar novas sondagens após uma janela de 15 segundos; testes restantes ficam unknown. Fontes Docker/SQL têm seus próprios prazos. Não há monitoramento contínuo nem teste externo ao host. As sondagens HTTP podem aparecer nos logs/contadores da aplicação; usam somente GET em endpoints predeterminados.
+
+Containers adicionais deste projeto Compose, mesmo ausentes da definição consultada pelo painel, entram na leitura do MCP e podem ter seus logs consultados. São marcados configured=false e protegidos contra controle genérico. Seu processo ativo não comprova o funcionamento e pode permanecer unknown; isso evita omitir workers personalizados no diagnóstico. Não inclui containers de projetos Docker alheios. Serviços intencionalmente desativados são separados dos esperados ausentes.
+
+Exemplos:
+
+```json
+{"resource":"health"}
+{"resource":"health","service":"postgres"}
+{"resource":"operational","app":"main"}
+```
+
+## Incidentes e eventos contínuos
+
+Use `infra_read` com `{"resource":"incidents"}` para consultar as preferências de monitoramento, incidentes abertos/encerrados e a última amostra de serviços. O monitor do painel observa a instalação em segundo plano; a chave não precisa manter uma conexão para que a coleta continue.
+
+Para uma assinatura externa, use `GET /api/ai/events` com `Authorization: Bearer <chave>` e escopo `read`. O painel usa sua sessão administrativa em `/api/monitor/events`. Eventos: `snapshot`, `incident`, `recovery`, `status`, `settings`; `auth-expired` encerra uma assinatura cuja autorização expirou ou foi revogada. Reenvie `Last-Event-ID` para retomar eventos duráveis ainda retidos. Fora da janela, use o snapshot para ressincronizar. Não use chave na URL nem trate este SSE como o transporte MCP `/mcp`.
+
+As preferências são alteradas na página Monitoramento & incidentes, sem reconstrução de containers. Não há escrita dessas preferências pelo MCP. Consulte [a documentação do monitor](../../../../docs/MCP.md#monitoramento-e-incidentes-por-sse) para limites, persistência e exemplos.
+
+## CLI Jubart pelo MCP
+
+- `jubart_cli_help({"command":"app update"})` lista comandos/flags, descrições e permissões. O filtro é opcional.
+- `jubart_cli_read({"argv":["apps"]})` consulta recursos com `read`; o prefixo `jubart` é opcional.
+- `jubart_cli_plan({"argv":["app","update","app2","--domain","erp.exemplo.com","--save-only"]})` gera prévia, sem aplicar. Exige `execute` e `application.update`.
+- `jubart_cli_execute({"planId":"<ID real retornado>","requestId":"<UUID novo>"})` executa após a autorização correspondente e usa os recibos idempotentes de `infra_execute`. Acompanhe `operation_status`; não execute os marcadores como valores reais.
+
+Prévia vinculada à chave e revisão/ID do alvo, válida por 15 minutos. `--dry-run` não gera plano executável. Mantenha o UUID para retries da mesma intenção. Os comandos `app create/update/remove/apply` usam a implementação da CLI e permissões novas `application.create/update/remove/apply`, sem concessão automática às chaves existentes. Podem configurar pastas/comandos, gerar arquivos, reconstruir o runtime selecionado e aplicar Traefik; preservam arquivos dos projetos, bancos e volumes. Compose de controle mapeia ao tipo de serviço e às permissões existentes; não aceita comandos Docker livres.
+
+A ajuda documenta flags suportadas e comandos locais. `exec`, credenciais/acesso e reinício do próprio painel continuam no terminal local. Site/certificados/métricas usam verificações/amostras do painel; `schedules` mostra cadastro/estado. Os resultados são JSON, não stdout de um processo Python ou shell. O atalho `incidents` é uma extensão remota para o histórico do MCP.
+
+API HTTP: `GET /api/ai/cli/help`, `POST /api/ai/cli/read`, `POST /api/ai/cli/plan`, `PUT /api/ai/cli/execute`, com chave Bearer e os mesmos dados. Consulte a [documentação completa](../../../../docs/MCP.md#cli-jubart-pela-conexão-mcp) para exemplos e limites.
+
+Para consultar pastas, use `jubart_cli_read` com `argv=["dir","app2"]` ou `infra_read` com `resource="app-directory"` e `app`. Remover app pelo MCP exige pasta/volume verificado vazio (inclusive ocultos), na prévia e execução, sem apagar a pasta/volumes. Não contorne uma recusa por arquivos presentes ou montagem não verificada.
+
+Bash real no host usa `jubart_host_shell_open/read/input/close`, com permissão explícita `execute` + `terminal.host` e agente local iniciado com `jubart host-agent`. Confirme o usuário e diretório retornados, mantenha o requestId UUID nos retries e use cursor para ler. Os comandos têm os privilégios do usuário do agente, sem sandbox. Execute apenas o que o usuário autorizou; não reproduza segredos da saída. Encerre a sessão quando terminar. Consulte docs/MCP.md no servidor/repositório para o protocolo e limites.
+
+## Backups e conexões de banco
+
+Consulte `infra_read` com `resource="backups"` (engine opcional) e `resource="database-connections"`. Use as revisões retornadas para planejar e executar `backup.configure`, `backup.run` e `database.connection.save/test/remove`, conforme as ações concedidas na chave. Configure pasta dedicada visível ao painel, cron, fuso, retenção, seleção de bancos e S3 compatível. A alteração recria apenas o backup selecionado; retenção e envio remoto podem excluir dumps antigos/transmitir dados e precisam fazer parte da autorização. Não mova backups anteriores como consequência de mudar o destino.
+
+Os backups são dos MariaDB/PostgreSQL desta instalação e usam suas credenciais gerenciadas, separadas das conexões do console. Para conexões, use referências a senha no ambiente (apenas variáveis de banco reconhecidas), cofre ou conexão da mesma engine/conta; omitir a referência em uma edição preserva a senha. S3 mantém as chaves existentes ou reutiliza outro backup por `s3CredentialsFrom`. Credencial nova deve ser cadastrada nos campos protegidos do painel. Não envie nem peça segredos em texto, argumentos ou URLs; não há senha/chave retornada pelo MCP.
+
+Planeje antes, use UUID por intenção, acompanhe `operation_status` e consulte o recurso novamente após a execução. Conexões novas exigem conta/banco existentes; não há host externo, SQL livre, restauração ou exclusão de dumps nessa capacidade. Estado indisponível não significa ausência de cópias e configurar S3 não comprova upload. Consulte a seção Backups e conexões dos bancos pelo MCP em `docs/MCP.md` para schemas e exemplos.

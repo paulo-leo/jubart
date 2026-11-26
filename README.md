@@ -189,7 +189,7 @@ A estrutura permite combinar aplicações PHP, processos Node.js e sites estáti
 
 ### Dependências do host
 
-Use Linux amd64 com **Docker Engine e acesso ao daemon local por socket Unix**, shell POSIX e ferramentas usuais (`readlink`, `stat`, `mktemp`, `mkfifo`, `id`, `ln`). Git é necessário para clonar/atualizar; Bash é usado pelo atalho `jubart dir`. **Python, Node.js, Compose, Buildx, certificados e dados de fuso da CLI vêm na imagem `paulo2021/jubart:cli-1.2.0`**. Não precisam ser instalados no host para executar `jubart` ou o instalador. O primeiro uso baixa a imagem; um checkout de desenvolvimento pode construir o runtime localmente com Docker e `tar`.
+Use Linux amd64 com **Docker Engine e acesso ao daemon local por socket Unix**, shell POSIX e ferramentas usuais (`readlink`, `stat`, `mktemp`, `mkfifo`, `id`, `ln`). Git é necessário para clonar/atualizar; Bash é usado pelo atalho `jubart dir`. **Python, Node.js, Compose, Buildx, certificados e dados de fuso da CLI vêm na imagem `paulo2021/jubart:cli-1.3.0`**. Não precisam ser instalados no host para executar `jubart` ou o instalador. O primeiro uso baixa a imagem; um checkout de desenvolvimento pode construir o runtime localmente com Docker e `tar`.
 
 Em Ubuntu/Debian, para os utilitários do host:
 
@@ -587,7 +587,8 @@ Há cinco cenários: instalação do projeto ao ambiente pronto, requisição HT
 | Backups dos bancos / Importar e exportar SQL | Agendas, cópias, downloads e importações |
 | Filas, jobs & Scheduler | Automações das aplicações Laravel |
 | Informações do host / Containers & tráfego | Recursos do servidor e consumo dos containers, separadamente |
-| Conexão MCP | Chaves, ações permitidas e auditoria da integração com IA |
+| Monitoramento & incidentes | Verificações periódicas, histórico de falhas/recuperações e notificações SSE; acesso externo com chave MCP de leitura |
+| Conexão MCP | Consultas, CLI, incidentes, backups e conexões com ações permitidas, prévias e auditoria |
 | Tecnologias & conceitos | Componentes, versões fixadas e leitura deste README |
 
 As seções seguintes detalham tanto a operação geral quanto procedimentos específicos. Comandos de PHP/Artisan/Octane aplicam-se somente aos projetos que usam essas tecnologias.
@@ -2192,7 +2193,7 @@ docker compose logs --since=24h backup
 docker compose exec backup python3 /opt/backup/backup.py health
 ```
 
-O healthcheck falha se o último ciclo falhou ou se não há sucesso recente dentro de `BACKUP_MAX_AGE_HOURS`; desabilitar a agenda faz a verificação retornar sucesso sem indicar proteção ativa. Um estado `unhealthy` **não envia alerta nem reinicia automaticamente o serviço**. Configure seu monitoramento para notificar falhas e teste isso. Os logs exibem sucesso local, upload, erro e próximo horário.
+O healthcheck falha se o último ciclo falhou ou se não há sucesso recente dentro de `BACKUP_MAX_AGE_HOURS`; desabilitar a agenda faz a verificação retornar sucesso sem indicar proteção ativa. Um estado `unhealthy` **não reinicia automaticamente o serviço**. O monitor configurável do painel pode registrar o incidente após falhas consecutivas e enviar notificações pelo SSE; veja [Monitoramento & incidentes](docs/MCP.md#monitoramento-e-incidentes-por-sse). Teste seus alertas e acompanhe o histórico. Os logs exibem sucesso local, upload, erro e próximo horário.
 
 Para verificar um arquivo, entre na pasta configurada por `BACKUP_DIRECTORY` no host:
 
@@ -3612,15 +3613,21 @@ A guia **Conexão MCP** permite gerar, listar e revogar chaves de API, distingui
 A integração dispõe de:
 
 - **MCP Streamable HTTP:** `/mcp`, com SDK oficial e autenticação Bearer por requisição.
-- **Consulta:** `GET /api/ai/read`, exclusivamente leitura de containers, tecnologias, logs, filas/jobs e processos.
-- **Execução:** `PUT /api/ai/execute`, restrito às aplicações e ações permitidas para a chave, com requestId idempotente.
+- **Consulta:** `GET /api/ai/read`, leitura de aplicações, serviços, containers, volumes, tecnologias, logs, filas/jobs e processos de toda esta instalação Jubart.
+- **Execução:** `PUT /api/ai/execute`, limitado às ações permitidas para a chave sobre os alvos desta instalação, com requestId idempotente.
 - **Contexto:** `infra_read` com `resource=context` reúne aplicações, revisões, saúde, WebSockets, automações e últimas operações da própria chave. `resource=guide` entrega a Skill e a referência.
 - **Prévia:** `infra_plan` ou `POST /api/ai/plan` mostra comandos e impactos sem executar.
 - **Acompanhamento:** `GET /api/ai/operations/{id}`, limitado às operações da própria chave.
 
 Não há terminal, SQL, edição de arquivos ou acesso genérico ao Docker por essa API. Operações via IA são autorizadas pelos escopos/ações da chave e não abrem uma confirmação no painel; mantenha a aprovação de ferramentas no cliente e conceda somente as ações necessárias. `job.interrupt` para o worker inteiro, sem cancelamento seletivo ou rollback de um job.
 
-Consulte a [documentação técnica completa](docs/MCP.md) para autenticação, parâmetros, exemplos, limites e configuração do VS Code. A [Skill jubart-mcp](.github/skills/jubart-mcp/SKILL.md) acompanha uma referência autocontida da API e orienta diagnóstico, interpretação de logs e execução autorizada. Ela pode ser copiada para o diretório de skills aceito pela ferramenta de IA; não altera nem instala configurações do editor automaticamente. A própria tela oferece links autenticados para abrir/baixar SKILL.md, sua referência e a documentação. Selecione explicitamente as aplicações e ações de cada chave. Chaves antigas mantêm seu escopo anterior; revogue e recrie para restringir. Início/parada/reinício afeta apenas o container da aplicação escolhida; configurar WebSocket permite ativação, porta e origens, preservando imagem, comando, provedor e domínio. Não há configuração global via IA.
+Consulte a [documentação técnica completa](docs/MCP.md) para autenticação, parâmetros, exemplos, limites e configuração do VS Code. A [Skill jubart-mcp](.github/skills/jubart-mcp/SKILL.md) acompanha uma referência autocontida da API e orienta diagnóstico, interpretação de logs e execução autorizada. Ela pode ser copiada para o diretório de skills aceito pela ferramenta de IA; não altera nem instala configurações do editor automaticamente. A própria tela oferece links autenticados para abrir/baixar SKILL.md, sua referência e a documentação. Toda chave com leitura monitora esta instalação inteira, inclusive chaves existentes. Selecione apenas as permissões de leitura/execução, ações e validade; não há seleção por aplicação ou serviço. Início/parada/reinício afeta apenas o container da aplicação escolhida; configurar WebSocket permite ativação, porta e origens, preservando imagem, comando, provedor e domínio. Não há configuração global via IA.
+
+O MCP também permite consultar `resource=services` e `resource=volumes` e executar `container.start`, `container.stop` e `container.restart` sobre um container existente. Cada operação exige a ação autorizada e o `containerId` atual de um serviço desta instalação. Volumes retornam metadados e destinos, sem conteúdo ou remoção. Logs aceitam `tail` (1–1000) e `since` (por exemplo `10m`). Na criação da chave, marque leitura e as ações de execução desejadas; o escopo é toda a instalação. Chaves antigas não recebem essas ações automaticamente. Parar/reiniciar um banco ou proxy pode afetar várias aplicações; o painel permanece protegido contra controlar a si próprio pelo MCP. Confira os [payloads e limites](docs/MCP.md#serviços-containers-e-volumes).
+
+O inventário de leitura inclui `overview` (contagens), `proxies`/`routes`, `redirects`, `databases`, `users`, `topology`, `certificates`, `host` e `metrics`. Bancos e usuários são consultados nos catálogos MariaDB/PostgreSQL por SQL fixo; contas do painel aparecem separadamente, sem senhas/hashes. `engine=postgres` ou `mariadb` filtra motores. Inventário indisponível retorna contagens `null`, com totais observados separados, sem presumir que o banco está vazio. Confira a [referência dos recursos](docs/MCP.md#inventário-ampliado-somente-de-leitura).
+
+Para perguntar se a infraestrutura está operacional, o agente deve consultar `health` (alias `operational`). A resposta cruza containers, healthchecks, HTTP interno e pelo proxy, SQL dos bancos e PING do cache, com estados `operational`, `degraded`, `unavailable`, `unknown` e `disabled`, evidências, dependências e horários. Processo ativo sem teste suficiente permanece desconhecido; serviços desativados não são falhas. A avaliação é pontual, não altera os serviços e não garante funções de negócio, HTTPS público ou conclusão de jobs. Veja os [critérios do diagnóstico](docs/MCP.md#operacionalidade-dos-serviços).
 
 As dependências MCP/Zod estão fixadas no package-lock e são instaladas no build do painel. Para disponibilizar:
 
@@ -4176,7 +4183,7 @@ Para aplicar a atualização visual, execute `sudo docker compose up -d --build 
 
 ### Versão do painel
 
-A versão atual do Jubart é `1.2.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
+A versão atual do Jubart é `1.3.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
 
 Para registrar uma nova versão, use `npm --prefix docker/panel version 1.1.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do Jubart e não altera versões das imagens ou das aplicações hospedadas.
 
@@ -4555,7 +4562,7 @@ O projeto passou a se chamar **Jubart**. As chaves internas `infra-control-theme
 
 ### IA: panorama da configuração e criação de .env
 
-Na tela **Conexão MCP**, o endpoint de configuração (`GET /api/ai/read?resource=configuration`, ou `infra_read` com `resource: configuration`) entrega valores atuais permitidos e o modelo público `.env.example`. A Skill `jubart-mcp` orienta o agente a entender essa visão parcial e criar um arquivo no workspace autorizado do cliente: `.env` para uma instalação nova ou `.env.proposed`/patch para uma existente, preservando credenciais e dados. Senhas reais não são exportadas; o modelo usa marcadores para geração local. A API não grava nem aplica o arquivo e a criação depende de uma ferramenta local de arquivos do agente. A consulta exige chave com leitura e respeita o escopo de aplicações.
+Na tela **Conexão MCP**, o endpoint de configuração (`GET /api/ai/read?resource=configuration`, ou `infra_read` com `resource: configuration`) entrega valores atuais permitidos e o modelo público `.env.example`. A Skill `jubart-mcp` orienta o agente a entender essa visão parcial e criar um arquivo no workspace autorizado do cliente: `.env` para uma instalação nova ou `.env.proposed`/patch para uma existente, preservando credenciais e dados. Senhas reais não são exportadas; o modelo usa marcadores para geração local. A API não grava nem aplica o arquivo e a criação depende de uma ferramenta local de arquivos do agente. A consulta exige chave com leitura e abrange toda a instalação; app é apenas um filtro.
 
 ### Páginas de erro do proxy Traefik
 

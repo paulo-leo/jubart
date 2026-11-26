@@ -116,6 +116,11 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: python3 scripts/test-cli-runtime.py "paulo2021/jubart:cli-$VERSION"
 
+      - name: Testar controle MCP com containers descartáveis
+        env:
+          JUBART_MCP_DOCKER_QA: '1'
+        run: node --test docker/panel/test/mcp-infrastructure-docker.test.mjs
+
       - name: Conferir credencial de publicação
         if: steps.release.outputs.publish == 'true'
         env:

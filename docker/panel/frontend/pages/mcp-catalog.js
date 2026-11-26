@@ -1,0 +1,31 @@
+export const mcpCategories = [['all','Todos'],['diagnostics','Diagnóstico'],['infrastructure','Infraestrutura'],['network','Rede e proxy'],['data','Bancos e acessos'],['automation','Automações']];
+// Examples only: selecting a resource never runs a request or a probe.
+export const mcpResources = [
+ {id:'backups',title:'Backups dos bancos',icon:'backups',group:'data',description:'Pastas, agenda, retenção, S3 e estado das cópias.',detail:'Configuração e estado dos backups MariaDB/PostgreSQL desta instalação. Credenciais ocultas; alterações exigem backup.configure e execução manual exige backup.run.',params:{engine:'all'}},
+ {id:'database-connections',title:'Conexões de banco',icon:'databases',group:'data',description:'Conexões salvas e referências de credenciais disponíveis.',detail:'Somente metadados, sem senhas. Criar/editar, testar e remover conexões exige as ações database.connection.save/test/remove. Não acessa servidores externos.'},
+ {id:'app-directory',title:'Pasta da aplicação',icon:'storage',group:'infrastructure',description:'Pasta salva, aplicada, montagens e condição de remoção.',detail:'Somente consulta, incluindo entradas ocultas. Remoção exige pastas/volumes confirmados vazios. Bash real usa ferramentas próprias e terminal.host.',params:{app:'main'}},
+ {id:'incidents',title:'Incidentes',icon:'shield',group:'diagnostics',description:'Incidentes abertos, recuperações e preferências de monitoramento.',detail:'Histórico limitado desta instalação, última verificação e serviços observados. SSE externo em /api/ai/events com a mesma chave de leitura.'},
+ {id:'health',title:'Operacionalidade',icon:'metrics',group:'diagnostics',description:'Saiba o que está operacional, degradado ou ainda não foi verificado.',detail:'Cruza Docker, healthchecks, HTTP, proxy, SQL e cache. Mostra evidências, dependências, horário e limites da verificação.'},
+ {id:'overview',title:'Panorama da instalação',icon:'overview',group:'diagnostics',description:'Uma visão geral dos recursos e suas contagens.'},
+ {id:'context',title:'Contexto para o agente',icon:'mcp',group:'diagnostics',description:'Permissões, revisões e contexto atual para orientar a IA.'},
+ {id:'services',title:'Containers e serviços',icon:'services',group:'infrastructure',description:'Estado, saúde, imagens, portas e identificação dos containers.'},
+ {id:'applications',title:'Aplicações',icon:'apps',group:'infrastructure',description:'Aplicações cadastradas, domínios e configuração salva.'},
+ {id:'volumes',title:'Volumes',icon:'storage',group:'infrastructure',description:'Volumes persistentes e seus destinos nos containers.'},
+ {id:'host',title:'Servidor hospedeiro',icon:'host',group:'infrastructure',description:'CPU, memória, swap, carga e tempo ligado.'},
+ {id:'metrics',title:'Métricas e tráfego',icon:'metrics',group:'diagnostics',description:'Consumo dos containers e tráfego HTTP, com histórico curto.'},
+ {id:'logs',title:'Logs dos serviços',icon:'logs',group:'diagnostics',description:'Registros com limites de linhas e intervalo de tempo.',params:{service:'php',tail:200,since:'10m'},detail:'Exemplo para php: até 200 linhas dos últimos 10 minutos. Ajuste o serviço na consulta. Logs podem conter informações sensíveis.'},
+ {id:'proxies',title:'Hosts de proxy',icon:'proxy',group:'network',description:'Domínios, destinos, portas, métodos HTTP e regras de acesso.'},
+ {id:'redirects',title:'Redirecionamentos',icon:'proxy',group:'network',description:'Regras HTTP para HTTPS, com cadastro e configuração distintos.'},
+ {id:'topology',title:'Topologia',icon:'topology',group:'network',description:'Relações entre aplicações, proxy, bancos e cache.'},
+ {id:'certificates',title:'Certificados TLS',icon:'shield',group:'network',description:'Domínios, validade e configuração de renovação dos certificados.'},
+ {id:'databases',title:'Bancos de dados',icon:'databases',group:'data',description:'Bancos, contas, grants e contagens de MariaDB e PostgreSQL.',params:{engine:'all'},detail:'Use engine=all, mariadb ou postgres. Contagens null indicam inventário incompleto; dados de tabelas e credenciais não são retornados.'},
+ {id:'users',title:'Usuários e acessos',icon:'dbusers',group:'data',description:'Contas dos bancos e do painel, separadas e sem credenciais.'},
+ {id:'configuration',title:'Configuração segura',icon:'settings',group:'infrastructure',description:'Portas, versões, limites e modelo público de ambiente.',detail:'Somente configurações não secretas. O modelo .env.example não é backup da instalação; esta consulta não grava nem aplica arquivos.'},
+ {id:'automation',title:'Filas, jobs e Scheduler',icon:'automation',group:'automation',description:'Automações cadastradas e estado dos seus processos.'},
+ {id:'app-automation',title:'Estatísticas de filas',icon:'scheduler',group:'automation',description:'Contagens e falhas disponibilizadas pela aplicação Laravel.',params:{app:'main'},detail:'Exemplo para main. Contagens dependem da aplicação; job enfileirado não significa execução concluída.'},
+ {id:'websockets',title:'WebSockets',icon:'proxy',group:'network',description:'Servidores, configuração e pendências de aplicação.'},
+ {id:'executions',title:'Operações da chave',icon:'logs',group:'automation',description:'Resultados recentes das operações iniciadas pela própria chave.'},
+ {id:'guide',title:'Skill e referência',icon:'documentation',group:'diagnostics',description:'Instruções de uso entregues diretamente ao agente.'},
+];
+export const resourceInput = resource => ({resource:resource.id,...resource.params});
+export const resourcePath = resource => '/api/ai/read?'+new URLSearchParams(resourceInput(resource));

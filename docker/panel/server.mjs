@@ -1,3 +1,7 @@
+import {createHostShells} from './mcp-host-shell.mjs';
+import {createAppDirectory} from './app-directory.mjs';
+import {createCLIIntegration} from './mcp-cli.mjs';
+import {createIncidentMonitor} from './incident-monitor.mjs';
 import {createProxyHosts,assertProxyHostDomains} from './proxy-hosts.mjs';
 import {createProxyNetwork,proxyComposeArgs} from './proxy-network.mjs';
 import {createPanelMaintenance} from './panel-maintenance.mjs';
@@ -46,6 +50,7 @@ import { createAppEnv } from './app-env.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {readFileSync} from 'node:fs';
 import { randomBytes, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createDatabaseAPI } from './database-api.mjs';
@@ -62,7 +67,8 @@ const runFile = (command, args, options) => new Promise((resolve, reject) => {
   child.stdin.end(input || '');
 });
 const here = path.dirname(fileURLToPath(import.meta.url));
-export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || process.cwd(), username = process.env.PANEL_USERNAME, password = process.env.PANEL_PASSWORD, executor = runFile, metricsFetcher = fetch, terminalEnabled = process.env.PANEL_TERMINAL_ENABLED === 'true', secureCookie = process.env.PANEL_COOKIE_SECURE === 'true', transferRunner, terminalEngine, sqlRunner } = {}) {
+const {version:panelVersion}=JSON.parse(readFileSync(path.join(here,'package.json'),'utf8'));
+export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || process.cwd(), username = process.env.PANEL_USERNAME, password = process.env.PANEL_PASSWORD, executor = runFile, metricsFetcher = fetch, healthProbe, monitorOptions = {}, terminalEnabled = process.env.PANEL_TERMINAL_ENABLED === 'true', secureCookie = process.env.PANEL_COOKIE_SECURE === 'true', transferRunner, terminalEngine, sqlRunner } = {}) {
   if (!username || !password || password.length < 16) throw new Error('Defina PANEL_USERNAME e PANEL_PASSWORD com no mínimo 16 caracteres no .env.');
   const localReady=initializeLocalConfig(root);localReady.catch(()=>{});
   const envFile = path.join(root, '.env'), configFile = path.join(root, 'config/apps.json');
@@ -73,7 +79,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   async function establishSession(principal,res,grantId,grantExpiry){const now=Date.now();for(const [id,value]of sessions)if(value.expires<now)sessions.delete(id);if(sessions.size>=100)sessions.delete(sessions.keys().next().value);const id=randomBytes(32).toString('hex'),csrf=randomBytes(32).toString('hex'),expires=Math.min(now+8*3600*1000,grantExpiry||Infinity);sessions.set(id,{csrf,expires,userId:principal.id,version:principal.version,...(grantId?{grantId}:{})});await panelUsers.audit({actor:principal.username,event:grantId?'session.link.login':'session.login',...(grantId?{grantId}:{})});res.setHeader('Set-Cookie',`infra_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor((expires-now)/1000)}${secureCookie?'; Secure':''}`);return send(res,200,{username:principal.username,csrf,access:principal});}
   const instanceId=randomBytes(8).toString('hex');
   const terminals=createTerminalManager({engine:terminalEngine,audit:event=>panelUsers.audit(event),onBusy:value=>{terminalBusy=value;},authorize:async owner=>{const session=sessions.get(owner);if(!session||session.expires<Date.now())return false;const user=await panelUsers.principal(session.userId);return !!((user?.admin||hasPermission(user,'terminal.apps')||hasPermission(user,'terminal.services'))&&user.version===session.version);}});
-  let operation = null, counter = 0, terminalBusy = false;
+  let operation = null, counter = 0, terminalBusy = false, hostTerminalBusy = false;
   const readEnv = async () => fs.readFile(envFile, 'utf8');
   const digest = data => createHash('sha256').update(data).digest('hex');
   const clean = async text => {
@@ -105,17 +111,27 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const topology=createTopology({root,readEnv,loadConfig,composeConfig,snapshot});
   const appEnv = createAppEnv({ root, loadConfig });
   async function composeConfig() { return JSON.parse(await compose(['--profile', '*', 'config', '--format', 'json'])); }
-  async function snapshot() {
+  async function snapshot({includeUnconfigured = false} = {}) {
     const definition = await composeConfig();
     const project = definition.name;
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(project)) throw new Error('Nome de projeto Compose inválido.');
     const ids = (await docker(['ps', '-aq', '--filter', `label=com.docker.compose.project=${project}`])).trim().split(/\s+/).filter(Boolean);
     const containers = ids.length ? JSON.parse(await docker(['inspect', ...ids])) : [];
+    const serviceRow = (name, def, c) => ({ name, profiles: def.profiles || [], container: c?.Name?.replace(/^\//, '') || null, state: c?.State?.Status || 'not_created', health: c?.State?.Health?.Status || null, image: def.image || `${project}-${name}`, containerId: c?.Id?.slice(0, 12) || null, createdAt: c?.Created || null, startedAt: c?.State?.StartedAt || null, finishedAt: c?.State?.FinishedAt || null, exitCode: c?.State?.ExitCode ?? null, restartCount: c?.RestartCount || 0, workingDir: c?.Config?.WorkingDir || def.working_dir || '/', networks:Object.entries(c?.NetworkSettings?.Networks||{}).map(([name,n])=>({name,ipv4:n.IPAddress||null,ipv6:n.GlobalIPv6Address||null})), ports: Object.entries(c?.NetworkSettings?.Ports || {}).flatMap(([port, bindings]) => (bindings || []).map(b => `${b.HostIp}:${b.HostPort} → ${port}`)), mounts: (c?.Mounts || []).map(m => ({ type: m.Type, name: m.Type === 'volume' ? m.Name : undefined, source: m.Source, target: m.Destination, writable: m.RW })), restartPolicy:c?.HostConfig?.RestartPolicy?.Name||def.restart||'no', protected: name === 'panel', automation: /^(worker|scheduler)-/.test(name) });
     const services = Object.entries(definition.services).filter(([name]) => !name.startsWith('node')).map(([name, def]) => {
       const list = containers.filter(c => c.Config?.Labels?.['com.docker.compose.service'] === name && c.Config?.Labels?.['com.docker.compose.oneoff']?.toLowerCase() !== 'true');
       const c = list[0];
-      return { name, profiles: def.profiles || [], container: c?.Name?.replace(/^\//, '') || null, state: c?.State?.Status || 'not_created', health: c?.State?.Health?.Status || null, image: def.image || `${project}-${name}`, containerId: c?.Id?.slice(0, 12) || null, createdAt: c?.Created || null, startedAt: c?.State?.StartedAt || null, finishedAt: c?.State?.FinishedAt || null, exitCode: c?.State?.ExitCode ?? null, restartCount: c?.RestartCount || 0, workingDir: c?.Config?.WorkingDir || def.working_dir || '/', networks:Object.entries(c?.NetworkSettings?.Networks||{}).map(([name,n])=>({name,ipv4:n.IPAddress||null,ipv6:n.GlobalIPv6Address||null})), ports: Object.entries(c?.NetworkSettings?.Ports || {}).flatMap(([port, bindings]) => (bindings || []).map(b => `${b.HostIp}:${b.HostPort} → ${port}`)), mounts: (c?.Mounts || []).map(m => ({ type: m.Type, source: m.Source, target: m.Destination, writable: m.RW })), restartPolicy:c?.HostConfig?.RestartPolicy?.Name||def.restart||'no', protected: name === 'panel', automation: /^(worker|scheduler)-/.test(name) };
+      return serviceRow(name, def, c);
     });
+    if (includeUnconfigured) {
+      const known = new Set(services.map(service => service.name));
+      for (const container of containers) {
+        const labels = container.Config?.Labels || {}, name = labels['com.docker.compose.service'];
+        if (!name || known.has(name) || !/^[a-z0-9][a-z0-9_-]{0,100}$/.test(name) || labels['com.docker.compose.oneoff']?.toLowerCase() === 'true') continue;
+        services.push({...serviceRow(name, {image:container.Config?.Image}, container), configured:false, protected:true});
+        known.add(name);
+      }
+    }
     const names = (await docker(['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`])).trim().split(/\s+/).filter(Boolean);
     const volumes = names.length ? JSON.parse(await docker(['volume', 'inspect', ...names])).map(v => ({ name: v.Name, driver: v.Driver, mountpoint: v.Mountpoint, created: v.CreatedAt })) : [];
     const saved = await loadConfig();
@@ -124,7 +140,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   }
   function startOperation(label, task) {
     if(panelMaintenance.isRunning())throw Object.assign(new Error('Aguarde a manutenção do painel terminar.'),{status:409});
-    if (terminalBusy) throw Object.assign(new Error('Aguarde o comando do console terminar.'), { status: 409 });
+    if (terminalBusy||hostTerminalBusy) throw Object.assign(new Error('Aguarde o comando do console terminar.'), { status: 409 });
     if (operation?.state === 'running') throw Object.assign(new Error('Há uma operação em andamento. Aguarde.'), { status: 409 });
     operation = { id: `${instanceId}-${++counter}`, label, state: 'running', startedAt: new Date().toISOString() };
     const current = operation;
@@ -134,9 +150,21 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const collectMetrics = createMetricsCollector({ docker, composeConfig, fetcher: metricsFetcher, intervalMs: process.env.PANEL_METRICS_INTERVAL_MS, metricsUrl: `http://traefik:${process.env.TRAEFIK_METRICS_PORT || 8082}/metrics` });
   const cutoffFile = path.join(root, '.panel-state/log-cutoffs.json');
   async function readCutoffs() { try { return JSON.parse(await fs.readFile(cutoffFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; return {}; } }
-  async function serviceLogs(service, profiles = []) {
-    const since = (await readCutoffs())[service];
-    return clean(await compose([...profiles, '--profile', 'automation', '--profile', 'automation-disabled', 'logs', '--no-color', '--timestamps', '--tail=1000', ...(since ? ['--since', since] : []), service]));
+  async function serviceLogs(service, profiles = [], options = {}) {
+    const cutoff = (await readCutoffs())[service];
+    let since = options.since || cutoff;
+    if (options.since && cutoff) {
+      const duration = options.since.match(/^([1-9][0-9]{0,5})([smh])$/);
+      const requested = duration ? Date.now() - Number(duration[1]) * ({s:1000,m:60000,h:3600000}[duration[2]]) : Date.parse(options.since);
+      since = new Date(Math.max(requested, Date.parse(cutoff))).toISOString();
+    }
+    const definition = await composeConfig();
+    if (!Object.hasOwn(definition.services, service)) {
+      const current = (await snapshot({includeUnconfigured:true})).services.find(row => row.name === service && row.containerId);
+      if (!current) throw Object.assign(new Error('Container não pertence à instalação.'),{status:403});
+      return clean(await docker(['logs','--timestamps','--tail='+String(options.tail ?? 1000),...(since?['--since',since]:[]),current.containerId]));
+    }
+    return clean(await compose([...profiles, '--profile', 'automation', '--profile', 'automation-disabled', 'logs', '--no-color', '--timestamps', '--tail='+String(options.tail ?? 1000), ...(since ? ['--since', since] : []), service]));
   }
   const infraEnv=createInfraEnv({readEnv,audit:event=>panelUsers.audit(event)});
   const configurationTransfer=createConfigurationTransfer({root,readEnv,loadConfig,audit:event=>panelUsers.audit(event)});
@@ -167,7 +195,13 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const security=createSecurity({root,loadConfig,composeConfig,docker,startOperation,audit:event=>panelUsers.audit(event)});
   const loginProtection=createLoginProtection({root,resolveAddress:req=>security.clientAddress(req),audit:event=>panelUsers.audit(event)});
   const mcpKeys=createMCPKeys(root);
-  const integration=createIntegration({root,keys:mcpKeys,snapshot,automation,compose,serviceLogs,loadConfig,getOperation:()=>operation,clean,websockets,startOperation});
+  let hostShells;
+  const appDirectories=createAppDirectory({root,loadConfig,snapshot:()=>snapshot({includeUnconfigured:true}),hasHostSession:id=>hostShells?.hasApp(id)||false});
+  hostShells=createHostShells({root,resolveLocation:id=>appDirectories.hostLocation(id),authorize:async id=>{const key=(await mcpKeys.list()).find(key=>key.id===id);return !!(key&&!key.revokedAt&&Date.parse(key.expiresAt)>Date.now()&&key.scopes.includes('execute')&&key.actions.includes('terminal.host'));},audit:event=>mcpKeys.audit(event),onBusy:value=>{hostTerminalBusy=value;}});
+  let monitor;
+  const integration=createIntegration({root,keys:mcpKeys,snapshot:()=>snapshot({includeUnconfigured:true}),automation,compose,serviceLogs,loadConfig,getOperation:()=>operation,clean,websockets,startOperation,docker,panelUsers,topology,certificates,hostInfo,collectMetrics,composeConfig,healthProbe,readIncidents:()=>monitor.read(),applicationRunner:executor,appDirectories,databases,databaseConnections});
+  const cli=createCLIIntegration({root,integration,loadConfig,audit:event=>mcpKeys.audit(event),version:panelVersion,hostShells,getService:async name=>(await snapshot({includeUnconfigured:true})).services.find(service=>service.name===name)});
+  monitor=createIncidentMonitor({root,collect:()=>integration.health(),audit:event=>panelUsers.audit(event),...monitorOptions});
   function send(res, status, body, type = 'application/json; charset=utf-8') {
     res.writeHead(status, { 'Content-Type': type }); res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
   }
@@ -187,7 +221,14 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
       if (req.method !== 'GET' && req.headers.origin && req.headers.origin !== `${secureCookie ? 'https' : 'http'}://${req.headers.host}`) return send(res, 403, { error: 'Origem inválida.' });
       if(url.pathname==='/mcp'||url.pathname.startsWith('/api/ai/')){
         let apiKey;try{apiKey=await mcpKeys.authenticate(req);}catch(error){if(error.status===401)res.setHeader('WWW-Authenticate','Bearer realm="jubart"');throw error;}
-        if(url.pathname==='/mcp'){if(req.method!=='POST')return send(res,405,{error:'MCP stateless usa POST.'});const payload=await body(req);await mcpKeys.audit({event:'mcp.request',keyId:apiKey.id,method:typeof payload.method==='string'?payload.method.slice(0,80):'invalid'});return await handleMCP(req,res,payload,apiKey,integration);}
+        if(url.pathname==='/api/ai/events'&&req.method==='GET'){if(!apiKey.scopes.includes('read'))return send(res,403,{error:'Permissão read necessária.'});await mcpKeys.audit({event:'monitor.subscribe',keyId:apiKey.id});return await monitor.subscribe(req,res,{owner:'key:'+apiKey.id,authorize:()=>mcpKeys.isActive(apiKey.id,'read')});}
+        if(url.pathname==='/api/ai/incidents'&&req.method==='GET'){if(!apiKey.scopes.includes('read'))return send(res,403,{error:'Permissão read necessária.'});return send(res,200,await monitor.read());}
+        if(url.pathname==='/mcp'){if(req.method!=='POST')return send(res,405,{error:'MCP stateless usa POST.'});const payload=await body(req);await mcpKeys.audit({event:'mcp.request',keyId:apiKey.id,method:typeof payload.method==='string'?payload.method.slice(0,80):'invalid'});return await handleMCP(req,res,payload,apiKey,integration,cli,hostShells);}
+        const hostShellRoute=url.pathname.match(/^\/api\/ai\/host-shell\/(open|read|input|close)$/);if(hostShellRoute&&req.method==='POST')return send(res,200,await hostShells[hostShellRoute[1]](apiKey,await body(req)));
+        if(url.pathname==='/api/ai/cli/help'&&req.method==='GET')return send(res,200,cli.help(apiKey,Object.fromEntries(url.searchParams)));
+        if(url.pathname==='/api/ai/cli/read'&&req.method==='POST')return send(res,200,await cli.read(apiKey,await body(req)));
+        if(url.pathname==='/api/ai/cli/plan'&&req.method==='POST')return send(res,200,await cli.plan(apiKey,await body(req)));
+        if(url.pathname==='/api/ai/cli/execute'&&req.method==='PUT')return send(res,202,await cli.execute(apiKey,await body(req)));
         if(url.pathname==='/api/ai/read'&&req.method==='GET')return send(res,200,await integration.read(apiKey,Object.fromEntries(url.searchParams)));
         if(url.pathname==='/api/ai/plan'&&req.method==='POST')return send(res,200,await integration.plan(apiKey,await body(req)));
         if(url.pathname==='/api/ai/execute'&&req.method==='PUT')return send(res,202,await integration.execute(apiKey,await body(req)));
@@ -329,10 +370,14 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         const download=url.pathname.match(/^\/api\/transfers\/([a-f0-9]{32})\/download$/);
         if(download&&req.method==='GET'){await transfers.download(download[1],res);return;}
         if(['/api/transfers/export','/api/transfers/import'].includes(url.pathname)&&req.method==='POST')return send(res,202,await transfers.enqueue(url.pathname.endsWith('/import')?'import':'export',await (async()=>{const data=await body(req),saved=await databaseConnections.resolve(data.connectionId,{engine:data.engine,database:data.database});return {...data,...saved};})()));
-        if(url.pathname==='/api/mcp/keys'&&req.method==='GET')return send(res,200,{keys:await mcpKeys.list(),actions:executionActions,applications:(await loadConfig()).config.applications.map(({id,name})=>({id,name}))});
-        if(url.pathname==='/api/mcp/keys'&&req.method==='POST'){const input=await body(req),known=new Set((await loadConfig()).config.applications.map(a=>a.id));if(Array.isArray(input.applications)&&input.applications.some(id=>id!=='*'&&!known.has(id)))return send(res,400,{error:'Aplicação não cadastrada.'});return send(res,201,await mcpKeys.create(input,actor));}
+        if(url.pathname==='/api/monitor'&&req.method==='GET')return send(res,200,await monitor.read());
+        if(url.pathname==='/api/monitor/settings'&&req.method==='POST')return send(res,200,await monitor.configure(await body(req),actor));
+        if(url.pathname==='/api/monitor/check'&&req.method==='POST')return send(res,200,await monitor.check());
+        if(url.pathname==='/api/monitor/events'&&req.method==='GET')return await monitor.subscribe(req,res,{owner:'session:'+token,authorize:async()=>{const current=sessions.get(token);if(!current||current.expires<=Date.now())return false;const user=await panelUsers.principal(current.userId);return !!(user?.admin&&user.version===current.version&&(!current.grantId||await panelLinks.sessionAllowed(current.grantId,user)));}});
+        if(url.pathname==='/api/mcp/keys'&&req.method==='GET')return send(res,200,{scope:'infrastructure',keys:await mcpKeys.list(),actions:executionActions});
+        if(url.pathname==='/api/mcp/keys'&&req.method==='POST')return send(res,201,await mcpKeys.create(await body(req),actor));
         const revokeKey=url.pathname.match(/^\/api\/mcp\/keys\/([a-f0-9]{16})\/revoke$/);if(revokeKey&&req.method==='POST')return send(res,200,await mcpKeys.revoke(revokeKey[1],actor));
-        const mcpDocument=url.pathname.match(/^\/api\/mcp\/documents\/(skill|reference|technical)$/);if(mcpDocument&&req.method==='GET'){const files={skill:'.github/skills/jubart-mcp/SKILL.md',reference:'.github/skills/jubart-mcp/references/api.md',technical:'docs/MCP.md'};const text=await fs.readFile(path.join(root,files[mcpDocument[1]]),'utf8');res.writeHead(200,{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','Content-Disposition':'inline; filename="'+(mcpDocument[1]==='skill'?'SKILL.md':mcpDocument[1]+'.md')+'"'});return res.end(text);}
+        const mcpDocument=url.pathname.match(/^\/api\/mcp\/documents\/(skill|reference|technical|plugin)$/);if(mcpDocument&&req.method==='GET'){const files={skill:'.github/skills/jubart-mcp/SKILL.md',reference:'.github/skills/jubart-mcp/references/api.md',technical:'docs/MCP.md',plugin:'.github/skills/jubart-mcp-plugin/SKILL.md'};const text=await fs.readFile(path.join(root,files[mcpDocument[1]]),'utf8');res.writeHead(200,{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','Content-Disposition':'inline; filename="'+(['skill','plugin'].includes(mcpDocument[1])?'SKILL.md':mcpDocument[1]+'.md')+'"'});return res.end(text);}
         if(url.pathname==='/api/mcp/audit'&&req.method==='GET')return send(res,200,{events:await mcpKeys.auditList()});
         const emptyRoute=url.pathname.match(/^\/api\/apps\/(main|app[0-9]+)\/(empty-status|remove-empty)$/);
         if(emptyRoute){
@@ -527,13 +572,16 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
       return send(res, 200, await fs.readFile(path.join(here, 'public', asset[0]), 'utf8'), asset[1]);
     } catch (error) { if(res.headersSent||res.destroyed){res.destroy();return;} return send(res, error.status || 400, { error: await clean(error.message).catch(() => 'Não foi possível concluir a operação.') }); }
   });
+  server.monitor=monitor;
+  server.on('listening',()=>{void localReady.then(()=>server.listening?monitor.start():undefined).catch(()=>console.error('Não foi possível iniciar o monitoramento da infraestrutura.'));});
+  server.on('close',()=>{void monitor.stop();});
   server.security=security;
   server.on('close',()=>{if(security.authServer.listening){security.authServer.closeAllConnections();security.authServer.close();}});
   server.internalHealth=createInternalHealth({root,loadConfig,composeConfig,docker,snapshot,compose});
   server.on('close',()=>{if(server.internalHealth.listening){server.internalHealth.closeAllConnections();server.internalHealth.close();}});
   server.on('listening',()=>captures.start());
-  server.on('close',()=>{captures.stop();void terminals.dispose();});
-  server.shutdown=async()=>{await terminals.dispose();await new Promise(resolve=>server.close(resolve));};
+  server.on('close',()=>{captures.stop();void terminals.dispose();void hostShells.dispose();});
+  server.shutdown=async()=>{await hostShells.dispose();await monitor.stop();await terminals.dispose();await new Promise(resolve=>server.close(resolve));};
   return server;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
