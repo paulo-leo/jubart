@@ -189,7 +189,7 @@ A estrutura permite combinar aplicações PHP, processos Node.js e sites estáti
 
 ### Dependências do host
 
-Use Linux amd64 com **Docker Engine e acesso ao daemon local por socket Unix**, shell POSIX e ferramentas usuais (`readlink`, `stat`, `mktemp`, `mkfifo`, `id`, `ln`). Git é necessário para clonar/atualizar; Bash é usado pelo atalho `jubart dir`. **Python, Node.js, Compose, Buildx, certificados e dados de fuso da CLI vêm na imagem `paulo2021/jubart:cli-1.3.0`**. Não precisam ser instalados no host para executar `jubart` ou o instalador. O primeiro uso baixa a imagem; um checkout de desenvolvimento pode construir o runtime localmente com Docker e `tar`.
+Use Linux amd64 com **Docker Engine e acesso ao daemon local por socket Unix**, shell POSIX e ferramentas usuais (`readlink`, `stat`, `mktemp`, `mkfifo`, `id`, `ln`). Git é necessário para clonar/atualizar; Bash é usado pelo atalho `jubart dir`. **Python, Node.js, Compose, Buildx, certificados e dados de fuso da CLI vêm na imagem `paulo2021/jubart:cli-1.4.0`**. Não precisam ser instalados no host para executar `jubart` ou o instalador. O primeiro uso baixa a imagem; um checkout de desenvolvimento pode construir o runtime localmente com Docker e `tar`.
 
 Em Ubuntu/Debian, para os utilitários do host:
 
@@ -587,7 +587,7 @@ Há cinco cenários: instalação do projeto ao ambiente pronto, requisição HT
 | Backups dos bancos / Importar e exportar SQL | Agendas, cópias, downloads e importações |
 | Filas, jobs & Scheduler | Automações das aplicações Laravel |
 | Informações do host / Containers & tráfego | Recursos do servidor e consumo dos containers, separadamente |
-| Monitoramento & incidentes | Verificações periódicas, histórico de falhas/recuperações e notificações SSE; acesso externo com chave MCP de leitura |
+| Monitoramento & incidentes | Verificações periódicas, incidentes, SSE e [notificações HTTP configuráveis](docs/incident-webhooks.md) com headers, parâmetros, filtros e histórico de entregas |
 | Conexão MCP | Consultas, CLI, incidentes, backups e conexões com ações permitidas, prévias e auditoria |
 | Tecnologias & conceitos | Componentes, versões fixadas e leitura deste README |
 
@@ -4183,7 +4183,7 @@ Para aplicar a atualização visual, execute `sudo docker compose up -d --build 
 
 ### Versão do painel
 
-A versão atual do Jubart é `1.3.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
+A versão atual do Jubart é `1.4.0`. Ela aparece na CLI e ao lado do logo na barra lateral do painel, inclusive para contas com acesso limitado. A fonte única é o campo `version` de `docker/panel/package.json`, também usado na identificação do servidor MCP. Ela é incorporada à interface durante o build, não é uma configuração do `.env`.
 
 Para registrar uma nova versão, use `npm --prefix docker/panel version 1.1.1 --no-git-tag-version` (substitua pela versão desejada). O comando atualiza também o lockfile. Depois execute `sudo docker compose up -d --build --no-deps panel` e recarregue o navegador. Use o padrão MAJOR.MINOR.PATCH: correção incrementa PATCH; funcionalidade compatível incrementa MINOR; mudança incompatível incrementa MAJOR. Essa identificação é do Jubart e não altera versões das imagens ou das aplicações hospedadas.
 
@@ -4795,6 +4795,10 @@ Referências: [FrankenPHP / Mercure](https://frankenphp.dev/docs/mercure/) e [co
 
 ## Recompilar o painel pela administração
 
+A tela **Administração → Manutenção do painel** também oferece **Atualização oficial**: consulta as versões no GitHub e Docker Hub, apresenta a prévia e atualiza o código do Jubart, o painel e a CLI. Somente o painel é recriado; arquivos montados por outros serviços, dados e configurações locais são preservados. Há histórico, backup de retorno e tentativa de recuperação automática se a nova imagem falhar. Leia o [guia de atualizações oficiais](docs/official-updates.md) para os limites, conflitos locais e retorno à versão anterior.
+
+As ações descritas abaixo ficam na guia **Operações locais**.
+
 Em **Administração → Manutenção do painel**, clique em **Recompilar painel** e confirme. A ação executa o equivalente a `docker compose up -d --build --no-deps panel`, usando explicitamente o projeto e os arquivos Compose desta instalação. Ela usa o código já presente no servidor; não baixa alterações do GitHub. Consultas SQL, transferências e operações em andamento impedem o início. Durante a recompilação, novas alterações administrativas ficam bloqueadas.
 
 Um executor temporário usa a imagem atual do painel, suas montagens e o mesmo usuário/grupos do processo do painel para continuar trabalhando mesmo quando o serviço `panel` é recriado. As capabilities são removidas. Antes de iniciar, o servidor salva uma cópia privada da configuração Compose resolvida e do ambiente da solicitação, preservando os caminhos originais e escapando valores literais; o executor usa essa configuração congelada, sem precisar de permissões extras para ler configurações pertencentes a outro usuário do host. Ele não publica portas e é removido automaticamente ao terminar. Usa rede bridge para permitir a autenticação do BuildKit nos registros de imagens; a imagem do painel inclui os plugins Docker Compose e Buildx usados na construção. O comando atua somente no serviço `panel`, sem recriar aplicações ou bancos nem excluir volumes. A tela mostra uma indicação de andamento, sem percentual artificial; o resultado e a saída com valores conhecidos de segredos ocultados ficam em `.panel-state/panel-maintenance/state.json`, arquivo privado fora do Git. A confirmação final exige que o painel volte saudável. Logs de build podem conter dados produzidos pelos próprios comandos do projeto: mantenha o acesso administrativo protegido.
@@ -4817,3 +4821,11 @@ A conclusão confirma os serviços habilitados em execução e os healthchecks d
 ### IP fixo do Traefik
 
 Instalações novas pelo instalador oficial reservam automaticamente um IPv4 para o Traefik, fora da faixa dinâmica. Instalações existentes mantêm a rede atual e oferecem uma migração explícita em **Integrações → Como acessar → IP fixo do Traefik**. Consulte o [procedimento de instalação, migração e rollback](docs/proxy-network.md) antes de aplicar na VPS.
+
+
+O MCP também pode [gerenciar notificações HTTP de incidentes e executar Bash nos containers dos apps](docs/MCP.md#notificações-http-pelo-mcp). As ações notification.webhook.* e terminal.container exigem concessão explícita na chave; leitura de destinos e entregas usa read. Os exemplos ficam nas guias **Notificações** e **Bash dos apps**, em Conexão MCP. O shell mantém a sessão entre chamadas e usa os privilégios/volumes da aplicação; permissões das chaves existentes são preservadas.
+
+
+### Novidades do Jubart 1.4.0
+
+A versão 1.4.0 inclui consultas SQL somente leitura pelas conexões salvas do painel, diagnóstico PHP/Composer/extensões/imagens pelo MCP, sessões Bash dos containers dos apps e destinos HTTP para incidentes e mudanças de estado. O painel também oferece atualização oficial a partir do GitHub e Docker Hub. Aplicações, bancos, volumes e permissões existentes são preservados; ações novas precisam de concessão explícita. Consulte o [guia MCP](docs/MCP.md), as [notificações HTTP](docs/incident-webhooks.md) e o [fluxo de atualização oficial](docs/official-updates.md).

@@ -49,3 +49,6 @@ config/apps.server-staged.yaml
 
 # Comunicação e saídas privadas do agente de Bash no host.
 /.jubart-host-agent/
+
+# Imagem do painel selecionada pela atualização oficial.
+/config/jubart-release.compose.yaml

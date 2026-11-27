@@ -1,3 +1,7 @@
+import {createDockerEvents} from './docker-events.mjs';
+import {createAppShells} from './mcp-app-shell.mjs';
+import {createIncidentWebhooks} from './incident-webhooks.mjs';
+import {createPanelUpdates} from './panel-updates.mjs';
 import {createHostShells} from './mcp-host-shell.mjs';
 import {createAppDirectory} from './app-directory.mjs';
 import {createCLIIntegration} from './mcp-cli.mjs';
@@ -68,7 +72,7 @@ const runFile = (command, args, options) => new Promise((resolve, reject) => {
 });
 const here = path.dirname(fileURLToPath(import.meta.url));
 const {version:panelVersion}=JSON.parse(readFileSync(path.join(here,'package.json'),'utf8'));
-export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || process.cwd(), username = process.env.PANEL_USERNAME, password = process.env.PANEL_PASSWORD, executor = runFile, metricsFetcher = fetch, healthProbe, monitorOptions = {}, terminalEnabled = process.env.PANEL_TERMINAL_ENABLED === 'true', secureCookie = process.env.PANEL_COOKIE_SECURE === 'true', transferRunner, terminalEngine, sqlRunner } = {}) {
+export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || process.cwd(), username = process.env.PANEL_USERNAME, password = process.env.PANEL_PASSWORD, executor = runFile, metricsFetcher = fetch, healthProbe, monitorOptions = {}, webhookOptions = {}, dockerEventsOptions = {}, terminalEnabled = process.env.PANEL_TERMINAL_ENABLED === 'true', secureCookie = process.env.PANEL_COOKIE_SECURE === 'true', transferRunner, terminalEngine, sqlRunner } = {}) {
   if (!username || !password || password.length < 16) throw new Error('Defina PANEL_USERNAME e PANEL_PASSWORD com no mínimo 16 caracteres no .env.');
   const localReady=initializeLocalConfig(root);localReady.catch(()=>{});
   const envFile = path.join(root, '.env'), configFile = path.join(root, 'config/apps.json');
@@ -79,7 +83,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   async function establishSession(principal,res,grantId,grantExpiry){const now=Date.now();for(const [id,value]of sessions)if(value.expires<now)sessions.delete(id);if(sessions.size>=100)sessions.delete(sessions.keys().next().value);const id=randomBytes(32).toString('hex'),csrf=randomBytes(32).toString('hex'),expires=Math.min(now+8*3600*1000,grantExpiry||Infinity);sessions.set(id,{csrf,expires,userId:principal.id,version:principal.version,...(grantId?{grantId}:{})});await panelUsers.audit({actor:principal.username,event:grantId?'session.link.login':'session.login',...(grantId?{grantId}:{})});res.setHeader('Set-Cookie',`infra_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor((expires-now)/1000)}${secureCookie?'; Secure':''}`);return send(res,200,{username:principal.username,csrf,access:principal});}
   const instanceId=randomBytes(8).toString('hex');
   const terminals=createTerminalManager({engine:terminalEngine,audit:event=>panelUsers.audit(event),onBusy:value=>{terminalBusy=value;},authorize:async owner=>{const session=sessions.get(owner);if(!session||session.expires<Date.now())return false;const user=await panelUsers.principal(session.userId);return !!((user?.admin||hasPermission(user,'terminal.apps')||hasPermission(user,'terminal.services'))&&user.version===session.version);}});
-  let operation = null, counter = 0, terminalBusy = false, hostTerminalBusy = false;
+  let operation = null, counter = 0, terminalBusy = false, hostTerminalBusy = false, appTerminalBusy = false;
   const readEnv = async () => fs.readFile(envFile, 'utf8');
   const digest = data => createHash('sha256').update(data).digest('hex');
   const clean = async text => {
@@ -140,7 +144,8 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   }
   function startOperation(label, task) {
     if(panelMaintenance.isRunning())throw Object.assign(new Error('Aguarde a manutenção do painel terminar.'),{status:409});
-    if (terminalBusy||hostTerminalBusy) throw Object.assign(new Error('Aguarde o comando do console terminar.'), { status: 409 });
+    if(sqlConsole.isBusy())throw Object.assign(new Error('Aguarde a consulta SQL terminar.'),{status:409});
+    if (terminalBusy||hostTerminalBusy||appTerminalBusy) throw Object.assign(new Error('Aguarde o comando do console terminar.'), { status: 409 });
     if (operation?.state === 'running') throw Object.assign(new Error('Há uma operação em andamento. Aguarde.'), { status: 409 });
     operation = { id: `${instanceId}-${++counter}`, label, state: 'running', startedAt: new Date().toISOString() };
     const current = operation;
@@ -182,7 +187,8 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const automation = createAutomationAPI({ root, compose, loadConfig, readEnv, clean, startOperation, serviceLogs });
   const phpAPI=createPHPAPI({root,readEnv,loadConfig,compose,startOperation,automation,afterApply:()=>websockets.recreateProvider('reverb')});
   const transfers=createTransfers({root,runner:transferRunner,canStart:()=>!panelMaintenance.isRunning()});
-  const panelMaintenance=createPanelMaintenance({root,composeConfig,docker,isBusy:()=>operation?.state==='running'||terminalBusy||sqlConsole.isBusy()||transfers.isBusy(),audit:event=>panelUsers.audit(event)});
+  const panelMaintenance=createPanelMaintenance({root,composeConfig,docker,isBusy:()=>operation?.state==='running'||terminalBusy||hostTerminalBusy||appTerminalBusy||sqlConsole.isBusy()||transfers.isBusy(),audit:event=>panelUsers.audit(event)});
+  const panelUpdates=createPanelUpdates({root,runningVersion:panelVersion,composeConfig,docker,maintenance:panelMaintenance});
   const hostInfo=createHostInfo({docker});
   const delegated=createDelegatedAccess({snapshot,databases,compose,startOperation,users:panelUsers});
   const runtimeVersions=createRuntimeVersions({root,readEnv,loadConfig,compose,startOperation,phpAPI,websockets});
@@ -195,13 +201,16 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
   const security=createSecurity({root,loadConfig,composeConfig,docker,startOperation,audit:event=>panelUsers.audit(event)});
   const loginProtection=createLoginProtection({root,resolveAddress:req=>security.clientAddress(req),audit:event=>panelUsers.audit(event)});
   const mcpKeys=createMCPKeys(root);
-  let hostShells;
-  const appDirectories=createAppDirectory({root,loadConfig,snapshot:()=>snapshot({includeUnconfigured:true}),hasHostSession:id=>hostShells?.hasApp(id)||false});
-  hostShells=createHostShells({root,resolveLocation:id=>appDirectories.hostLocation(id),authorize:async id=>{const key=(await mcpKeys.list()).find(key=>key.id===id);return !!(key&&!key.revokedAt&&Date.parse(key.expiresAt)>Date.now()&&key.scopes.includes('execute')&&key.actions.includes('terminal.host'));},audit:event=>mcpKeys.audit(event),onBusy:value=>{hostTerminalBusy=value;}});
+  let hostShells,appShells;
+  const appDirectories=createAppDirectory({root,loadConfig,snapshot:()=>snapshot({includeUnconfigured:true}),hasHostSession:async id=>await hostShells?.hasApp(id)||appShells?.hasApp(id)||false});
+  hostShells=createHostShells({root,resolveLocation:id=>appDirectories.hostLocation(id),authorize:async id=>{if(panelMaintenance.isRunning())return false;const key=(await mcpKeys.list()).find(key=>key.id===id);return !!(key&&!key.revokedAt&&Date.parse(key.expiresAt)>Date.now()&&key.scopes.includes('execute')&&key.actions.includes('terminal.host'));},audit:event=>mcpKeys.audit(event),onBusy:value=>{hostTerminalBusy=value;}});
+  appShells=createAppShells({root,loadConfig,snapshot:()=>snapshot({includeUnconfigured:true}),docker,engine:terminalEngine,authorize:async id=>{if(panelMaintenance.isRunning())return false;const key=(await mcpKeys.list()).find(key=>key.id===id);return !!(key&&!key.revokedAt&&Date.parse(key.expiresAt)>Date.now()&&key.scopes.includes('execute')&&key.actions.includes('terminal.container'));},canOpen:()=>!panelMaintenance.isRunning()&&!terminalBusy&&!hostTerminalBusy&&operation?.state!=='running',audit:event=>mcpKeys.audit(event),onBusy:value=>{appTerminalBusy=value;}});
   let monitor;
-  const integration=createIntegration({root,keys:mcpKeys,snapshot:()=>snapshot({includeUnconfigured:true}),automation,compose,serviceLogs,loadConfig,getOperation:()=>operation,clean,websockets,startOperation,docker,panelUsers,topology,certificates,hostInfo,collectMetrics,composeConfig,healthProbe,readIncidents:()=>monitor.read(),applicationRunner:executor,appDirectories,databases,databaseConnections});
+  const incidentWebhooks=createIncidentWebhooks({root,readEnv,events:()=>monitor.events(),audit:event=>panelUsers.audit(event),...webhookOptions});
+  const integration=createIntegration({root,keys:mcpKeys,snapshot:()=>snapshot({includeUnconfigured:true}),automation,compose,serviceLogs,loadConfig,getOperation:()=>operation,clean,websockets,startOperation,docker,panelUsers,topology,certificates,hostInfo,collectMetrics,composeConfig,healthProbe,readIncidents:()=>monitor.read(),applicationRunner:executor,appDirectories,databases,databaseConnections,incidentWebhooks,sqlConsole,authorizeSQL:async id=>{const key=(await mcpKeys.list()).find(row=>row.id===id);return !!(key&&!key.revokedAt&&Date.parse(key.expiresAt)>Date.now()&&key.scopes.includes('execute')&&key.actions.includes('database.sql.execute'));},canExecuteSQL:()=>!panelMaintenance.isRunning()&&operation?.state!=='running'});
   const cli=createCLIIntegration({root,integration,loadConfig,audit:event=>mcpKeys.audit(event),version:panelVersion,hostShells,getService:async name=>(await snapshot({includeUnconfigured:true})).services.find(service=>service.name===name)});
-  monitor=createIncidentMonitor({root,collect:()=>integration.health(),audit:event=>panelUsers.audit(event),...monitorOptions});
+  monitor=createIncidentMonitor({root,collect:()=>integration.health({fresh:true}),audit:event=>panelUsers.audit(event),...monitorOptions});
+  const dockerEvents=createDockerEvents({scope:async()=>({project:(await composeConfig()).name}),cursor:()=>monitor.dockerCursor(),onEvent:event=>monitor.serviceEvent(event),onStatus:value=>monitor.eventSource(value),enabled:executor===runFile,...dockerEventsOptions});
   function send(res, status, body, type = 'application/json; charset=utf-8') {
     res.writeHead(status, { 'Content-Type': type }); res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
   }
@@ -223,8 +232,9 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         let apiKey;try{apiKey=await mcpKeys.authenticate(req);}catch(error){if(error.status===401)res.setHeader('WWW-Authenticate','Bearer realm="jubart"');throw error;}
         if(url.pathname==='/api/ai/events'&&req.method==='GET'){if(!apiKey.scopes.includes('read'))return send(res,403,{error:'Permissão read necessária.'});await mcpKeys.audit({event:'monitor.subscribe',keyId:apiKey.id});return await monitor.subscribe(req,res,{owner:'key:'+apiKey.id,authorize:()=>mcpKeys.isActive(apiKey.id,'read')});}
         if(url.pathname==='/api/ai/incidents'&&req.method==='GET'){if(!apiKey.scopes.includes('read'))return send(res,403,{error:'Permissão read necessária.'});return send(res,200,await monitor.read());}
-        if(url.pathname==='/mcp'){if(req.method!=='POST')return send(res,405,{error:'MCP stateless usa POST.'});const payload=await body(req);await mcpKeys.audit({event:'mcp.request',keyId:apiKey.id,method:typeof payload.method==='string'?payload.method.slice(0,80):'invalid'});return await handleMCP(req,res,payload,apiKey,integration,cli,hostShells);}
+        if(url.pathname==='/mcp'){if(req.method!=='POST')return send(res,405,{error:'MCP stateless usa POST.'});const payload=await body(req);await mcpKeys.audit({event:'mcp.request',keyId:apiKey.id,method:typeof payload.method==='string'?payload.method.slice(0,80):'invalid'});return await handleMCP(req,res,payload,apiKey,integration,cli,hostShells,appShells);}
         const hostShellRoute=url.pathname.match(/^\/api\/ai\/host-shell\/(open|read|input|close)$/);if(hostShellRoute&&req.method==='POST')return send(res,200,await hostShells[hostShellRoute[1]](apiKey,await body(req)));
+        const appShellRoute=url.pathname.match(/^\/api\/ai\/app-shell\/(open|read|input|resize|close)$/);if(appShellRoute&&req.method==='POST')return send(res,200,await appShells[appShellRoute[1]](apiKey,await body(req)));
         if(url.pathname==='/api/ai/cli/help'&&req.method==='GET')return send(res,200,cli.help(apiKey,Object.fromEntries(url.searchParams)));
         if(url.pathname==='/api/ai/cli/read'&&req.method==='POST')return send(res,200,await cli.read(apiKey,await body(req)));
         if(url.pathname==='/api/ai/cli/plan'&&req.method==='POST')return send(res,200,await cli.plan(apiKey,await body(req)));
@@ -275,6 +285,11 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
           if(!delegatedServiceRoute(principal,url.pathname,req.method)&&!terminalRouteAllowed(principal,url.pathname,req.method)){await panelUsers.audit({actor,event:'access.denied',route:url.pathname.slice(0,200)});return send(res,403,{error:'Você não possui permissão para esta área ou recurso.'});}
         }
         if(req.method!=='GET'&&panelMaintenance.isRunning()&&!['/api/logout','/api/operation-preview'].includes(url.pathname))return send(res,409,{error:'Aguarde a manutenção do painel terminar.'});
+        if(url.pathname==='/api/panel-updates'&&req.method==='GET')return send(res,200,await panelUpdates.read());
+        if(url.pathname==='/api/panel-updates/check'&&req.method==='POST')return send(res,200,await panelUpdates.check());
+        if(url.pathname==='/api/panel-updates/preview'&&req.method==='POST'){const data=await body(req);if(Object.keys(data).some(key=>key!=='version'))return send(res,400,{error:'Parâmetros de versão inválidos.'});return send(res,200,await panelUpdates.preview(data.version));}
+        if(url.pathname==='/api/panel-updates/rollback-preview'&&req.method==='POST')return send(res,200,await panelUpdates.previewRollback());
+        if(url.pathname==='/api/panel-updates/apply'&&req.method==='POST')return send(res,202,await panelUpdates.apply(await body(req),actor));
         if(url.pathname==='/api/panel-maintenance'&&req.method==='GET')return send(res,200,await panelMaintenance.read());
         if(url.pathname==='/api/panel-maintenance/start-services'&&req.method==='POST')return send(res,202,await panelMaintenance.startServices(actor));
         if(url.pathname==='/api/panel-maintenance/rebuild'&&req.method==='POST')return send(res,202,await panelMaintenance.rebuild(actor));
@@ -286,7 +301,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         }
         if(url.pathname==='/api/panel-users/save'&&req.method==='POST'){const result=await panelUsers.save(await body(req),principal);for(const [id,entry] of sessions)if(entry.userId===result.user.id){await terminals.closeOwner(id);sessions.delete(id);}return send(res,200,result);}
         if(url.pathname==='/api/php'||url.pathname.startsWith('/api/php/')){
-          if(req.method!=='GET'&&(operation?.state==='running'||terminalBusy))return send(res,409,{error:'Aguarde a operação atual.'});
+          if(req.method!=='GET'&&(operation?.state==='running'||terminalBusy||appTerminalBusy))return send(res,409,{error:'Aguarde a operação atual.'});
           const result=await phpAPI.handle(url.pathname,req.method,req.method==='GET'?{}:await body(req));
           return send(res,result?.status||404,result?.body||{error:'Operação PHP desconhecida.'});
         }
@@ -338,7 +353,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if(url.pathname==='/api/documentation'&&req.method==='GET')return send(res,200,await readDocumentation(root));
         if(url.pathname==='/api/runtime-versions'&&req.method==='GET')return send(res,200,await runtimeVersions.read());
         const versionsRoute=url.pathname.match(/^\/api\/runtime-versions\/(php|node)\/(resolve|save|apply)$/);
-        if(versionsRoute&&req.method==='POST'){if(operation?.state==='running'||terminalBusy)return send(res,409,{error:'Aguarde a operação atual.'});const [,kind,action]=versionsRoute,data=await body(req);return send(res,action==='apply'?202:200,await runtimeVersions[action](kind,data));}
+        if(versionsRoute&&req.method==='POST'){if(operation?.state==='running'||terminalBusy||appTerminalBusy)return send(res,409,{error:'Aguarde a operação atual.'});const [,kind,action]=versionsRoute,data=await body(req);return send(res,action==='apply'?202:200,await runtimeVersions[action](kind,data));}
         const packagesRoute=url.pathname.match(/^\/api\/app-packages\/(main|app[0-9]+)$/);
         if(packagesRoute){if(req.method==='GET')return send(res,200,await appPackages.inventory(packagesRoute[1],url.searchParams.get('manager')||'npm'));if(req.method==='POST')return send(res,202,await appPackages.execute(packagesRoute[1],await body(req)));return send(res,405,{error:'Método não permitido.'});}
         if(url.pathname==='/api/external-tools'&&req.method==='GET')return send(res,200,await externalTools.list());
@@ -357,7 +372,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if(url.pathname==='/api/resources/memory'&&req.method==='POST')return send(res,202,await resources.save(await body(req)));
         if(url.pathname==='/api/host'&&req.method==='GET')return send(res,200,await hostInfo());
         if(url.pathname==='/api/configuration-transfer'&&req.method==='GET')return send(res,200,await configurationTransfer.read());
-        const migrationRoute=url.pathname.match(/^\/api\/configuration-transfer\/(export|preview|import)$/);if(migrationRoute&&req.method==='POST'){if(operation?.state==='running'||terminalBusy)return send(res,409,{error:'Aguarde a operação atual.'});return send(res,200,await configurationTransfer[migrationRoute[1]](await body(req),actor));}
+        const migrationRoute=url.pathname.match(/^\/api\/configuration-transfer\/(export|preview|import)$/);if(migrationRoute&&req.method==='POST'){if(operation?.state==='running'||terminalBusy||appTerminalBusy)return send(res,409,{error:'Aguarde a operação atual.'});return send(res,200,await configurationTransfer[migrationRoute[1]](await body(req),actor));}
         if(url.pathname==='/api/plugins'&&req.method==='GET')return send(res,200,await plugins.list());
         if(url.pathname==='/api/plugins/preview'&&req.method==='POST')return send(res,200,await plugins.preview(await body(req)));
         if(url.pathname==='/api/plugins/install'&&req.method==='POST')return send(res,202,await plugins.install(await body(req),actor));
@@ -370,6 +385,13 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         const download=url.pathname.match(/^\/api\/transfers\/([a-f0-9]{32})\/download$/);
         if(download&&req.method==='GET'){await transfers.download(download[1],res);return;}
         if(['/api/transfers/export','/api/transfers/import'].includes(url.pathname)&&req.method==='POST')return send(res,202,await transfers.enqueue(url.pathname.endsWith('/import')?'import':'export',await (async()=>{const data=await body(req),saved=await databaseConnections.resolve(data.connectionId,{engine:data.engine,database:data.database});return {...data,...saved};})()));
+        if(url.pathname==='/api/monitor/webhooks'&&req.method==='GET')return send(res,200,await incidentWebhooks.read());
+        if(url.pathname==='/api/monitor/webhooks/save'&&req.method==='POST')return send(res,200,await incidentWebhooks.save(await body(req),actor));
+        if(url.pathname==='/api/monitor/webhooks/configuration'&&req.method==='POST')return send(res,200,await incidentWebhooks.configuration(await body(req),actor));
+        if(url.pathname==='/api/monitor/webhooks/remove'&&req.method==='POST')return send(res,200,await incidentWebhooks.remove(await body(req),actor));
+        if(url.pathname==='/api/monitor/webhooks/toggle'&&req.method==='POST')return send(res,200,await incidentWebhooks.toggle(await body(req),actor));
+        if(url.pathname==='/api/monitor/webhooks/test'&&req.method==='POST')return send(res,202,await incidentWebhooks.test(await body(req),actor));
+        if(url.pathname==='/api/monitor/webhooks/retry'&&req.method==='POST')return send(res,202,await incidentWebhooks.retry(await body(req),actor));
         if(url.pathname==='/api/monitor'&&req.method==='GET')return send(res,200,await monitor.read());
         if(url.pathname==='/api/monitor/settings'&&req.method==='POST')return send(res,200,await monitor.configure(await body(req),actor));
         if(url.pathname==='/api/monitor/check'&&req.method==='POST')return send(res,200,await monitor.check());
@@ -411,7 +433,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if (envRoute) {
           if (req.method === 'GET') return send(res, 200, await appEnv.read(envRoute[1], !envRoute[2]));
           if (req.method !== 'PUT' || envRoute[2]) return send(res, 405, { error: 'Método não permitido.' });
-          if (operation?.state === 'running' || terminalBusy) return send(res, 409, { error: 'Aguarde a operação atual.' });
+          if (operation?.state === 'running' || terminalBusy || appTerminalBusy) return send(res, 409, { error: 'Aguarde a operação atual.' });
           return send(res, 200, await appEnv.save(envRoute[1], await body(req)));
         }
         const sqlConnect=url.pathname.match(/^\/api\/databases\/(mariadb|postgres)\/sql-connect$/);
@@ -422,7 +444,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if(sqlRoute){if(req.method!=='POST')return send(res,405,{error:'Use POST para executar SQL.'});return send(res,200,await sqlConsole.execute(sqlRoute[1],await (async()=>{const data=await body(req),saved=await databaseConnections.resolve(data.connectionId,{engine:sqlRoute[1],database:data.database});return {...data,...saved,credentialId:'manual'};})(),actor));}
 
         if (url.pathname.startsWith('/api/databases/')) {
-          if (req.method !== 'GET' && (operation?.state === 'running' || terminalBusy)) return send(res, 409, { error: 'Aguarde a operação atual.' });
+          if (req.method !== 'GET' && (operation?.state === 'running' || terminalBusy || appTerminalBusy)) return send(res, 409, { error: 'Aguarde a operação atual.' });
           const result = await databases.handle(url.pathname, req.method, req.method === 'GET' ? {} : await body(req), actor);
           return send(res, result.status, result.body);
         }
@@ -502,7 +524,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         if(interactiveOpen||appTerminal||interactiveSession){
           if(!terminalEnabled)return send(res,403,{error:'Terminal desativado. Habilite PANEL_TERMINAL_ENABLED e recrie o painel.'});
           if((interactiveOpen||appTerminal)&&req.method==='POST'){
-            if(terminalBusy||operation?.state==='running')return send(res,409,{error:'Aguarde a operação ou encerre o terminal atual.'});
+            if(terminalBusy||appTerminalBusy||operation?.state==='running')return send(res,409,{error:'Aguarde a operação ou encerre o terminal atual.'});
             let app;
             if(appTerminal){app=(await loadConfig()).config.applications.find(a=>a.id===appTerminal[1]);if(!app?.enabled)return send(res,409,{error:'Salve, habilite e aplique a aplicação antes de abrir o terminal.'});}
             const service=app?slots[app.id].service:interactiveOpen[1],definition=await composeConfig();
@@ -529,7 +551,7 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
         const terminalMatch = url.pathname.match(/^\/api\/services\/([a-z0-9-]+)\/exec$/);
         if (terminalMatch && req.method === 'POST') {
           if (!terminalEnabled) return send(res, 403, { error: 'Terminal desativado. Habilite PANEL_TERMINAL_ENABLED no .env e recrie o painel.' });
-          if (terminalBusy || operation?.state === 'running') return send(res, 409, { error: 'Aguarde o comando ou operação administrativa atual.' });
+          if (terminalBusy || appTerminalBusy || operation?.state === 'running') return send(res, 409, { error: 'Aguarde o comando ou operação administrativa atual.' });
           const service = terminalMatch[1], definition = await composeConfig();
           if (!Object.hasOwn(definition.services, service) || service === 'panel' || service.startsWith('node')) return send(res, 403, { error: 'Terminal indisponível para esse serviço.' });
           const data = await body(req);
@@ -573,15 +595,15 @@ export function createPanel({ root = process.env.PANEL_WORKSPACE_DIRECTORY || pr
     } catch (error) { if(res.headersSent||res.destroyed){res.destroy();return;} return send(res, error.status || 400, { error: await clean(error.message).catch(() => 'Não foi possível concluir a operação.') }); }
   });
   server.monitor=monitor;
-  server.on('listening',()=>{void localReady.then(()=>server.listening?monitor.start():undefined).catch(()=>console.error('Não foi possível iniciar o monitoramento da infraestrutura.'));});
-  server.on('close',()=>{void monitor.stop();});
+  server.on('listening',()=>{void localReady.then(()=>server.listening?Promise.all([monitor.start(),incidentWebhooks.start(),dockerEvents.start()]):undefined).catch(()=>console.error('Não foi possível iniciar o monitoramento da infraestrutura.'));});
+  server.on('close',()=>{void dockerEvents.stop();void monitor.stop();void incidentWebhooks.stop();});
   server.security=security;
   server.on('close',()=>{if(security.authServer.listening){security.authServer.closeAllConnections();security.authServer.close();}});
   server.internalHealth=createInternalHealth({root,loadConfig,composeConfig,docker,snapshot,compose});
   server.on('close',()=>{if(server.internalHealth.listening){server.internalHealth.closeAllConnections();server.internalHealth.close();}});
   server.on('listening',()=>captures.start());
-  server.on('close',()=>{captures.stop();void terminals.dispose();void hostShells.dispose();});
-  server.shutdown=async()=>{await hostShells.dispose();await monitor.stop();await terminals.dispose();await new Promise(resolve=>server.close(resolve));};
+  server.on('close',()=>{captures.stop();void terminals.dispose();void hostShells.dispose();void appShells.dispose();});
+  server.shutdown=async()=>{await dockerEvents.stop();await appShells.dispose();await hostShells.dispose();await monitor.stop();await incidentWebhooks.stop();await terminals.dispose();await new Promise(resolve=>server.close(resolve));};
   return server;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -21,10 +21,27 @@ test('MariaDB transmite linhas sem sobrescrever nomes e retorna linhas afetadas;
  const update=mysqlFake(undefined,q=>{q.emit('result',{affectedRows:3});q.emit('end');});assert.equal((await runSQL({...input,sql:'UPDATE example SET a=1'},{mysqlFactory:()=>update})).affectedRows,3);
  const admin=mysqlFake(['GRANT ALL PRIVILEGES ON *.* TO `appuser`@`%`'],()=>{});await assert.rejects(runSQL(input,{mysqlFactory:()=>admin}),/globais/);assert.equal(admin.calls.length,1);
 });
+test('MariaDB: fields ausente em DDL/DML não é um resultado tabular inválido',async()=>{
+ for(const fields of [undefined,null]){const connection=mysqlFake(undefined,q=>{q.emit('fields',fields);q.emit('result',{affectedRows:2});q.emit('end');});const result=await runSQL({...input,sql:'UPDATE example SET a=1'},{mysqlFactory:()=>connection});assert.deepEqual(result.columns,[]);assert.deepEqual(result.rows,[]);assert.equal(result.affectedRows,2);}
+});
+test('SQL MCP: driver exige READ ONLY antes da consulta e falha fechado se o banco recusar',async()=>{
+ const maria=mysqlFake(undefined,q=>{q.emit('fields',[{name:'value'}]);q.emit('result',[1]);q.emit('end');});
+ await runSQL({...input,readOnly:true},{mysqlFactory:()=>maria});assert.ok(maria.calls.indexOf('START TRANSACTION READ ONLY')<maria.calls.indexOf('SELECT 1'));assert.ok(maria.destroyed);
+ let opened=0;await assert.rejects(runSQL({...input,readOnly:true,sql:'DELETE FROM users'},{mysqlFactory:()=>{opened++;return maria;}}),e=>e.code==='SQL_READ_ONLY');assert.equal(opened,0);
+ const broken=mysqlFake(undefined,()=>{throw Error('Não deveria consultar');}),original=broken.query;
+ broken.query=(sql,callback)=>sql==='START TRANSACTION READ ONLY'?queueMicrotask(()=>callback(Error('READ ONLY recusado'))):original(sql,callback);
+ await assert.rejects(runSQL({...input,readOnly:true},{mysqlFactory:()=>broken}),/READ ONLY recusado/);assert.ok(!broken.calls.includes('SELECT 1'));assert.ok(broken.destroyed);
+ const calls=[],conn=new EventEmitter();conn.connect=async()=>{};conn.end=async()=>calls.push('closed');conn.query=async query=>{if(typeof query==='string'){calls.push(query);return {rows:[{rolsuper:false}]};}calls.push(query.text);queueMicrotask(()=>query.emit('end',{command:'SELECT',rowCount:0,fields:[]}));};
+ await runSQL({...input,engine:'postgres',readOnly:true},{pgFactory:()=>conn});assert.ok(calls.indexOf('BEGIN READ ONLY')<calls.indexOf('SELECT 1'));assert.ok(calls.includes('SET LOCAL search_path = pg_catalog, public'));assert.equal(calls.at(-1),'closed');
+});
 test('PostgreSQL usa protocolo de uma instrução e tipos posicionais; recusa roles administrativas',async()=>{
  const conn=new EventEmitter();conn.connect=async()=>{};conn.end=async()=>{};conn.query=async query=>{if(typeof query==='string')return {rows:[{rolsuper:false,rolcreaterole:false,rolcreatedb:false,rolreplication:false,rolbypassrls:false,server_access:false}]};assert.equal(query.queryMode,'extended');assert.equal(query._result.rowAsArray,true);queueMicrotask(()=>{query.emit('row',[null,'42'],{fields:[{name:'a'},{name:'b'}]});query.emit('end',{command:'SELECT',rowCount:1,fields:[{name:'a'},{name:'b'}]});});};
  const result=await runSQL({...input,engine:'postgres'},{pgFactory:()=>conn});assert.deepEqual(result.rows,[[null,'42']]);assert.equal(result.affectedRows,0);
  const dangerous=new EventEmitter();dangerous.connect=async()=>{};dangerous.end=async()=>{};dangerous.query=async()=>({rows:[{rolsuper:true}]});await assert.rejects(runSQL({...input,engine:'postgres'},{pgFactory:()=>dangerous}),/administrativos/);
+});
+test('PostgreSQL: erro pelo callback do driver chega ao cliente sem esperar timeout',async()=>{
+ const conn=new EventEmitter();let closed=false;conn.connect=async()=>{};conn.end=async()=>{closed=true;};conn.query=async query=>{if(typeof query==='string')return {rows:[{rolsuper:false}]};queueMicrotask(()=>query.callback(Object.assign(Error('cannot execute UPDATE in a read-only transaction'),{code:'25006'})));};
+ await assert.rejects(runSQL({...input,engine:'postgres',readOnly:true},{pgFactory:()=>conn,limits:{...SQL_LIMITS,timeoutMs:1000}}),/cannot execute UPDATE in a read-only transaction/);assert.equal(closed,true);
 });
 test('consulta termina por limite e timeout, sem acumular resultados ilimitados',async()=>{
  const limited=mysqlFake(undefined,q=>{q.emit('fields',[{name:'a'}]);for(let i=0;i<10;i++)q.emit('result',[i]);q.emit('end');});const result=await runSQL(input,{mysqlFactory:()=>limited,limits:{...SQL_LIMITS,rows:2}});assert.equal(result.rows.length,2);assert.equal(result.partial,true);assert.equal(result.truncated,true);

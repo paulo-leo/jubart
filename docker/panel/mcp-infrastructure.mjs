@@ -14,7 +14,8 @@ export function publicService(service, key) {
   const {name, container, state, health, image, containerId, createdAt, startedAt, finishedAt, exitCode, restartCount, ports, automation, profiles, restartPolicy, networks, configured} = service;
   return {name, container, state, health, image, containerId, createdAt, startedAt, finishedAt, exitCode, restartCount, ports, automation, profiles, restartPolicy, networks, configured,
     protected: !containerControllable(service),
-    actions: containerId && containerControllable(service) && key.scopes.includes('execute') ? containerActions.filter(action => key.actions.includes(action)) : []};
+    actions: containerId && containerControllable(service) && key.scopes.includes('execute') ? containerActions.filter(action => key.actions.includes(action)) : [],
+    ...(['backup','backup-postgres'].includes(name)?{backupManagement:{engine:name==='backup'?'mariadb':'postgres',configurationResource:'backups',startAction:'container.start',configureAction:'backup.configure',runAction:'backup.run',note:'Iniciar/parar/reiniciar este container é independente de habilitar backups automáticos. Para iniciar o serviço existente, use container.start com o ID atual; não é necessário backup.configure. Configurar agenda/pasta/retenção usa backup.configure; uma cópia imediata usa backup.run. Não habilite a agenda ou altere o outro banco quando o pedido for apenas iniciar este serviço.'}}:{})};
 }
 
 export function publicVolumes(state, services, filtered = false) {

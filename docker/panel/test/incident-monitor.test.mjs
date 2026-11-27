@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createIncidentMonitor,monitorDefaults} from '../incident-monitor.mjs';
+import {randomUUID} from 'node:crypto';
+import {EventEmitter} from 'node:events';
+import {dockerServiceEvent} from '../docker-events.mjs';
 const report=(status='operational',extra={})=>({status,sources:{docker:true,configuration:true,compose:true},services:[{name:'php',status,expected:true,state:status==='unavailable'?'exited':'running',checks:[{kind:'http',status:status==='operational'?'passed':status==='unknown'?'unknown':'failed',message:'password=never-persist-this'}]}],...extra});
 async function fixture(t,options={}){const root=await fs.mkdtemp('/tmp/jubart-monitor-');let value=report(),calls=0;const events=[];const monitor=createIncidentMonitor({root,collect:async()=>{calls++;if(value instanceof Error)throw value;return value;},audit:async e=>events.push(e),...options});t.after(async()=>{await monitor.stop();await fs.rm(root,{recursive:true,force:true});});const configure=async changes=>{const current=await monitor.read();return monitor.configure({...current.settings,revision:current.revision,...changes},'admin');};return {root,monitor,configure,events,set:valueNext=>{value=valueNext;},calls:()=>calls};}
 
@@ -13,8 +16,8 @@ test('monitor: preferências validadas, concorrência por revisão e pausa persi
  const restored=createIncidentMonitor({root:f.root,collect:async()=>report()});t.after(()=>restored.stop());assert.equal((await restored.read()).settings.enabled,false);assert.equal(f.events.length,1);
 });
 test('monitor: confirmação consecutiva, deduplicação e desconhecido não encerra incidente',async t=>{
- const f=await fixture(t);f.set(report('unavailable'));await f.monitor.check();assert.equal((await f.monitor.read()).incidents.length,0);
- f.set(report());await f.monitor.check();f.set(report('unavailable'));await f.monitor.check();assert.equal((await f.monitor.read()).incidents.length,0);await f.monitor.check();
+ const f=await fixture(t);f.set(report('degraded'));await f.monitor.check();assert.equal((await f.monitor.read()).incidents.length,0);
+ f.set(report());await f.monitor.check();f.set(report('degraded'));await f.monitor.check();assert.equal((await f.monitor.read()).incidents.length,0);await f.monitor.check();
  let state=await f.monitor.read();assert.equal(state.summary.activeIncidents,1);const id=state.incidents[0].id,sequence=state.summary.sequence;
  await f.monitor.check();assert.equal((await f.monitor.read()).summary.sequence,sequence);
  f.set(report('unknown'));await f.monitor.check();assert.equal((await f.monitor.read()).summary.activeIncidents,1);
@@ -48,4 +51,31 @@ test('monitor: alteração de severidade gera evento sem duplicar o incidente',a
 
 test('monitor: encerrar durante a inicialização não rearma verificações',async t=>{
  const f=await fixture(t,{initialDelayMs:1});const starting=f.monitor.start();await f.monitor.stop();await starting;await new Promise(resolve=>setTimeout(resolve,15));assert.equal(f.calls(),0);
+});
+
+let eventIndex=0;
+const containerEvent=(action,id='a'.repeat(64))=>dockerServiceEvent({Type:'container',Action:action,timeNano:String(BigInt(Date.now())*1000000n+BigInt(++eventIndex)),Actor:{ID:id,Attributes:{'com.docker.compose.project':'test','com.docker.compose.service':'php'}}},'test');
+test('monitor: parada é imediata, die/stop não duplica, reinício rápido avisa sem afirmar recuperação',async t=>{
+ const f=await fixture(t);await f.configure({failureThreshold:10});const stop=containerEvent('die');await f.monitor.serviceEvent(stop);let state=await f.monitor.read();assert.equal(state.summary.activeIncidents,1);assert.equal(state.incidents[0].transition,'stopped');
+ await f.monitor.serviceEvent(containerEvent('stop'));await f.monitor.serviceEvent(stop);assert.equal((await f.monitor.events()).sequence,1);
+ await f.monitor.serviceEvent(containerEvent('restart'));state=await f.monitor.read();assert.equal(state.serviceEvents[0].type,'lifecycle');assert.equal(state.serviceEvents[0].incident.transition,'restarted');assert.equal(state.serviceEvents[0].incident.status,'unknown');assert.equal(state.summary.activeIncidents,1);
+ f.set(report('unknown'));await f.monitor.check();assert.equal((await f.monitor.read()).summary.activeIncidents,1);f.set(report());await f.monitor.check();assert.equal((await f.monitor.read()).summary.activeIncidents,0);assert.deepEqual((await f.monitor.events()).events.map(e=>e.type),['incident','lifecycle','recovery']);
+});
+test('monitor: replay e pausa mantêm cursor sem reenviar paradas/inícios anteriores',async t=>{
+ const f=await fixture(t),stop=containerEvent('die');await f.monitor.serviceEvent(stop);const checkpoint=await f.monitor.dockerCursor();
+ const restored=createIncidentMonitor({root:f.root,collect:async()=>report()});t.after(()=>restored.stop());await restored.serviceEvent(stop);assert.equal((await restored.events()).sequence,1);assert.equal(await restored.dockerCursor(),checkpoint);
+ const current=await restored.read();await restored.configure({...current.settings,revision:current.revision,enabled:false},'admin');const restart=containerEvent('restart');await restored.serviceEvent(restart);assert.equal((await restored.events()).sequence,1);assert.equal(await restored.dockerCursor(),restart.timeNano);
+ const paused=await restored.read();await restored.configure({...paused.settings,revision:paused.revision,enabled:true},'admin');await restored.serviceEvent(restart);assert.equal((await restored.events()).sequence,1);
+});
+test('monitor: evento não espera a sondagem lenta e descarta uma amostra anterior à parada',async t=>{
+ let release;const gate=new Promise(resolve=>{release=resolve;});const f=await fixture(t,{collect:()=>gate});const check=f.monitor.check();await new Promise(resolve=>setTimeout(resolve,5));
+ const event=f.monitor.serviceEvent(containerEvent('die'));await Promise.race([event,new Promise((_,reject)=>setTimeout(()=>reject(Error('Evento bloqueado pela sondagem')),300))]);assert.equal((await f.monitor.read()).summary.activeIncidents,1);release(report());await check;assert.equal((await f.monitor.read()).summary.activeIncidents,1);
+});
+test('monitor: SSE publica lifecycle com ID, replay e histórico consultável',async t=>{
+ const f=await fixture(t),response=()=>{const res=new EventEmitter();res.chunks=[];res.writableLength=0;res.writeHead=()=>{};res.flushHeaders=()=>{};res.write=text=>res.chunks.push(text);res.end=()=>{res.writableEnded=true;};return res;};
+ const res=response();await f.monitor.subscribe({headers:{}},res,{owner:'test',authorize:async()=>true});await f.monitor.serviceEvent(containerEvent('restart'));assert.match(res.chunks.join(''),/event: lifecycle\n/);assert.match(res.chunks.join(''),/"transition":"restarted"/);assert.equal((await f.monitor.read()).serviceEvents.length,1);
+ const replay=response();await f.monitor.subscribe({headers:{'last-event-id':'0'}},replay,{owner:randomUUID(),authorize:async()=>true});assert.match(replay.chunks.join(''),/id: 1\nevent: lifecycle/);
+});
+test('monitor: fallback periódico confirma container parado sem aguardar falhas HTTP consecutivas',async t=>{
+ const f=await fixture(t);await f.configure({failureThreshold:10});f.set(report('degraded'));await f.monitor.check();assert.equal((await f.monitor.read()).summary.activeIncidents,0);f.set(report('unavailable'));await f.monitor.check();assert.equal((await f.monitor.read()).summary.activeIncidents,1);
 });

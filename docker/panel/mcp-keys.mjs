@@ -1,3 +1,5 @@
+import {sqlAction} from './mcp-sql.mjs';
+import {notificationActions} from './mcp-notifications.mjs';
 import {backupActions} from './mcp-backups.mjs';
 import {cliAppActions} from './mcp-cli-apps.mjs';
 import fs from 'node:fs/promises';
@@ -6,7 +8,7 @@ import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import {atomicWrite} from './core.mjs';
 import {containerActions} from './mcp-infrastructure.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
-export const executionActions=[...backupActions,'terminal.host',...containerActions,...cliAppActions,'application.start','application.stop','application.restart','websocket.start','websocket.stop','websocket.restart','websocket.configure','worker.register','worker.start','worker.stop','worker.restart','worker.remove','job.register','job.dispatch','job.interrupt','job.remove','job.retry','scheduler.register','scheduler.start','scheduler.stop','scheduler.run'];
+export const executionActions=[sqlAction,...notificationActions,...backupActions,'terminal.container','terminal.host',...containerActions,...cliAppActions,'application.start','application.stop','application.restart','websocket.start','websocket.stop','websocket.restart','websocket.configure','worker.register','worker.start','worker.stop','worker.restart','worker.remove','job.register','job.dispatch','job.interrupt','job.remove','job.retry','scheduler.register','scheduler.start','scheduler.stop','scheduler.run'];
 const fail=(text,status=400)=>{throw Object.assign(new Error(text),{status});};
 export function createMCPKeys(root){const directory=path.join(root,'.panel-state/mcp'),filename=path.join(directory,'keys.json');let writes=Promise.resolve();const rates=new Map();
  const serial=fn=>{const result=writes.then(fn);writes=result.catch(()=>{});return result;};

@@ -1,3 +1,5 @@
+import {executionPermission} from './mcp-permissions.mjs';
+import {containerActions,containerControllable} from './mcp-infrastructure.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {z} from 'zod';
@@ -22,7 +24,7 @@ const pick=(value,fields)=>Object.fromEntries(fields.filter(field=>value?.[field
 const prefix=engine=>engine==='mariadb'?'BACKUP_':'PG_BACKUP_';
 const service=engine=>engine==='mariadb'?'backup':'backup-postgres';
 const envNames=env=>Object.keys(env).filter(key=>/^(?:DB_PASSWORD|APP_[0-9]+_DB_PASSWORD|POSTGRES_PASSWORD)$/.test(key)&&env[key]);
-export function createBackupIntegration({root,readEnv,loadConfig,databases,connections,startOperation,compose,hostMounts=async()=>[]}){
+export function createBackupIntegration({root,readEnv,loadConfig,databases,connections,startOperation,compose,snapshot,docker,hostMounts=async()=>[]}){
  const vault=createVault(root,readEnv);
  const enabled=(env,engine)=>{if(!databaseEnabled(env,engine))fail('Servidor '+engine+' desabilitado nesta instalação.',409);};
  const inspectConnections=async()=>{if(!connections)fail('Conexões de banco indisponíveis.',503);return connections.inspect();};
@@ -52,15 +54,33 @@ export function createBackupIntegration({root,readEnv,loadConfig,databases,conne
   if(settings.remoteEnabled&&!settings.s3EnvAuth&&(!access||!secret))fail('Configure credenciais S3 no painel ou selecione uma origem já configurada.',409);
   validateBackup({...settings,...values},root);return {current,settings,values,hostDirectory};
  }
- async function read(data){
+ async function read(data,key){
   if(data.resource==='database-connections'){const value=await inspectConnections(),env=parseEnv(await readEnv());return {...value,credentialSources:envNames(env).map(name=>({source:'environment',name})),note:'Metadados das conexões salvas; sem senhas ou descoberta automática com gravação. Servidores limitados a MariaDB/PostgreSQL desta instalação. Credenciais podem ser reutilizadas por referência ao ambiente, cofre ou outra conexão da mesma conta.'};}
-  const text=await readEnv(),env=parseEnv(text),servers=[];
+  const text=await readEnv(),env=parseEnv(text),servers=[];let inventory;try{inventory=await snapshot?.();}catch{}
   for(const engine of data.engine&&data.engine!=='all'?[data.engine]:['mariadb','postgres']){
    const settings=backupConfig(env,engine),row={engine,enabled:databaseEnabled(env,engine),revision:backupRevision(text),settings,service:service(engine),databaseConnection:{host:engine,port:engine==='mariadb'?3306:5432,user:engine==='mariadb'?'root':env.POSTGRES_USER||'infra_admin',passwordConfigured:!!env[engine==='mariadb'?'DB_ROOT_PASSWORD':'POSTGRES_PASSWORD'],credentialSource:'managed-environment'},status:null,statusAvailable:false};
-   if(row.enabled&&(compose||databases)){try{const value=compose?JSON.parse(await compose(['exec','-T',service(engine),'python3','/opt/backup/backup.py','status'],undefined,{timeout:10000})): (await databases.handle('/api/databases/'+engine,'GET',{})).body.backupStatus;if(value&&!Array.isArray(value)&&Number.isInteger(value.fileCount)&&value.fileCount>=0){row.status={...pick(value,['engine','lastSuccess','lastError','fileCount','bytes']),files:(value.files||[]).slice(0,30).map(file=>pick(file,['name','bytes','createdAt','uploaded']))};row.statusAvailable=true;}}catch{}}
+   row.databaseEnabled=row.enabled;row.automaticBackupEnabled=settings.enabled;
+   const current=inventory?.services?.find(item=>item.name===row.service),containerId=/^[a-f0-9]{12}$/.test(current?.containerId||'')?current.containerId:null;
+   row.runtime={note:'Estado do container e ambiente configurado são distintos do agendamento salvo; running/healthy e automaticEnabled não comprovam execução de cópias.',inventoryAvailable:!!inventory,containerExists:inventory?!!containerId:null,state:current?.state||(inventory?'not_created':'unknown'),containerId,health:current?.health??null,automaticEnabled:null,configurationComparison:{status:'unknown',fieldsCompared:[],differences:[]}};
+   if(containerId&&docker&&inventory?.project){try{
+    const [container]=JSON.parse(await docker(['inspect',containerId],{timeout:10000})),labels=container?.Config?.Labels||{};
+    if(container?.Id?.slice(0,12)===containerId&&labels['com.docker.compose.project']===inventory.project&&labels['com.docker.compose.service']===row.service&&labels['com.docker.compose.oneoff']?.toLowerCase()!=='true'){
+     const runtimeEnv=Object.fromEntries((container.Config.Env||[]).map(line=>{const index=line.indexOf('=');return [line.slice(0,index),line.slice(index+1)];}));
+     const values={};for(const [field,variable]of Object.entries({enabled:'BACKUP_ENABLED',schedule:'BACKUP_SCHEDULE',timezone:'BACKUP_TIMEZONE',runOnStart:'BACKUP_RUN_ON_START'})){
+      if(!Object.hasOwn(runtimeEnv,variable))continue;const raw=runtimeEnv[variable];if(['enabled','runOnStart'].includes(field)){if(!['true','false'].includes(raw))continue;values[field]=raw==='true';}else if(raw.length<=100&&!/[\x00-\x1f]/.test(raw))values[field]=raw;
+     }
+     row.runtime.automaticEnabled=values.enabled??null;const fieldsCompared=Object.keys(values),differences=fieldsCompared.filter(field=>values[field]!==settings[field]).map(field=>({field,saved:settings[field],effective:values[field]}));
+     row.runtime.configurationComparison={status:!fieldsCompared.length?'unknown':differences.length?'pending':'matches',fieldsCompared,differences,note:'Compara somente os campos indicados do ambiente do container com a configuração salva; não confirma credenciais, arquivos ou execução de backups.'};
+    }
+   }catch{}}
+   row.operations=containerActions.map(action=>{const permission=executionPermission(key,action),blockedBy=!containerId?(inventory?'container_missing':'runtime_unavailable'):!containerControllable(current)?'service_protected':action!=='container.stop'&&!row.enabled?'database_disabled':null;return {action,tool:'jubart_container_'+action.split('.')[1],...permission,available:permission.allowed&&!blockedBy,blockedBy,operation:containerId?{action,service:row.service,containerId}:null};});
+   for(const action of ['backup.configure','backup.run']){const permission=executionPermission(key,action);row.operations.push({action,tool:action==='backup.configure'?'jubart_backup_configure':'jubart_backup_run',...permission,available:permission.allowed&&row.enabled,blockedBy:row.enabled?null:'database_disabled',engine,revision:row.revision});}
+   row.statusUnavailableReason=!row.enabled?'database_disabled':inventory&&row.runtime.state!=='running'?'service_not_running':null;
+   if(row.enabled&&row.statusUnavailableReason!=='service_not_running'&&(compose||databases)){try{const value=compose?JSON.parse(await compose(['exec','-T',service(engine),'python3','/opt/backup/backup.py','status'],undefined,{timeout:10000})): (await databases.handle('/api/databases/'+engine,'GET',{})).body.backupStatus;if(value&&!Array.isArray(value)&&Number.isInteger(value.fileCount)&&value.fileCount>=0){row.status={...pick(value,['engine','lastSuccess','lastError','fileCount','bytes']),files:(value.files||[]).slice(0,30).map(file=>pick(file,['name','bytes','createdAt','uploaded']))};row.statusAvailable=true;}}catch{}}
+   if(!row.statusAvailable&&!row.statusUnavailableReason)row.statusUnavailableReason='query_unavailable';
    servers.push(row);
   }
-  return {observedAt:new Date().toISOString(),servers,s3CredentialSources:['mariadb','postgres'].map(engine=>({engine,accessKeyIdConfigured:!!env[prefix(engine)+'S3_ACCESS_KEY_ID'],secretAccessKeyConfigured:!!env[prefix(engine)+'S3_SECRET_ACCESS_KEY']})),note:'Configuração salva e estado consultado; status indisponível não significa ausência de cópias. Backups usam as contas gerenciadas do serviço, não as conexões de aplicação do console. Senhas/chaves não são retornadas. Alterar retenção ou ativar agenda/runOnStart pode executar dumps, remover dumps locais antigos e enviar dados para S3.'};
+  return {observedAt:new Date().toISOString(),servers,workflow:{startService:'Se o pedido é iniciar o serviço existente, use a operação container.start autorizada em operations, com infra_plan/infra_execute ou jubart_container_start. Não habilite agendamento nem altere outro banco.',configure:'Para agenda, pasta, retenção e enabled, use backup.configure com a revisão atual e as opções solicitadas; a ação precisa estar na chave.',run:'Para uma cópia imediata, use backup.run; não depende de habilitar o agendamento automático.',permissions:'allowed=false informa exatamente missingScopes/missingActions. Informe a permissão ausente ao usuário; não afirme que a operação só existe no navegador. A concessão de permissões é administrativa e não pode ser feita pela própria chave.',verification:'Após o aceite, acompanhe operation_status, releia backups e confira status/arquivos. Running/healthy não comprova backups automáticos; parada observada não prova quem solicitou ou se foi administrativa.'},s3CredentialSources:['mariadb','postgres'].map(engine=>({engine,accessKeyIdConfigured:!!env[prefix(engine)+'S3_ACCESS_KEY_ID'],secretAccessKeyConfigured:!!env[prefix(engine)+'S3_SECRET_ACCESS_KEY']})),note:'Configuração salva e estado consultado; status indisponível não significa ausência de cópias. Backups usam as contas gerenciadas do serviço, não as conexões de aplicação do console. Senhas/chaves não são retornadas. Alterar retenção ou ativar agenda/runOnStart pode executar dumps, remover dumps locais antigos e enviar dados para S3.'};
  }
  async function plan(data){
   if(data.action==='backup.configure'){

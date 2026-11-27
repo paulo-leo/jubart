@@ -87,7 +87,7 @@ export function createHealthReport({root, snapshot, loadConfig, composeConfig, c
     if (sources.docker) for (const [name, required] of expected) if (required && !rows.has(name)) rows.set(name, {name, state: 'not_created', health: null});
     const checks = await mapLimit([...rows.values()], async service => {
       const required = expected.has(service.name) ? expected.get(service.name) : null;
-      const result = {...pick(service, ['name', 'containerId', 'state', 'health', 'restartCount', 'configured']), expected: required, checks: []};
+      const result = {...pick(service, ['name', 'containerId', 'state', 'health', 'restartCount', 'startedAt', 'configured']), expected: required, checks: []};
       if (required === false) return {...result, status: 'disabled', message: 'Não é esperado pela configuração atual; não é tratado como falha.', configurationMismatch: service.state === 'running'};
       if (service.state !== 'running') return {...result, status: sources.docker ? 'unavailable' : 'unknown', message: 'O container esperado não está em execução.'};
       result.checks.push({kind: 'docker', status: 'passed', message: 'Container em execução; isso não comprova o funcionamento da aplicação.'});
@@ -153,7 +153,8 @@ export function createHealthReport({root, snapshot, loadConfig, composeConfig, c
       limitations: ['Operacional significa que as verificações listadas passaram; não comprova todas as funções de negócio ou conclusão de jobs.', 'HTTP usa GET, prazo de 2 segundos e não segue redirecionamentos; HTTPS externo, DNS público, login e canais WebSocket não são testados.', 'Workers e backup dependem dos healthchecks disponíveis; processo ativo sem evidência adicional permanece desconhecido.', 'Falha ao consultar SQL/cache pode ser de autenticação ou permissão; não significa automaticamente servidor parado.', 'Sondagens HTTP deixam de iniciar após 15 segundos; testes não concluídos ficam desconhecidos.','Amostra pontual, reutilizada por até 5 segundos; não reinicia serviços nem altera configurações.']};
   }
   return {async read(data = {}) {
-    if (!cached || now() - cached.at >= cacheMs) {
+    if(data.fresh&&pending)await pending;
+    if (data.fresh || !cached || now() - cached.at >= cacheMs) {
       if (!pending) pending = collect().then(value => { cached = {at: now(), value}; return value; }).finally(() => { pending = null; });
       await pending;
     }

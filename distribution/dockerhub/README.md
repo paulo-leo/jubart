@@ -6,7 +6,7 @@
 
 Painel de infraestrutura para administrar aplicações web, containers, domínios, bancos de dados, filas e backups. Interface em português e CLI interativa para acompanhar a instalação pelo terminal.
 
-[Código-fonte](https://github.com/paulo-leo/jubart) · [Documentação completa](https://github.com/paulo-leo/jubart/blob/main/README.md) · [Versão 1.3.0](https://github.com/paulo-leo/jubart/tree/v1.3.0) · [Suporte e problemas](https://github.com/paulo-leo/jubart/issues)
+[Código-fonte](https://github.com/paulo-leo/jubart) · [Documentação completa](https://github.com/paulo-leo/jubart/blob/main/README.md) · [Versão 1.4.0](https://github.com/paulo-leo/jubart/tree/v1.4.0) · [Suporte e problemas](https://github.com/paulo-leo/jubart/issues)
 
 ## Instalação e administração com IA
 
@@ -34,13 +34,16 @@ O assistente precisa de ferramentas de execução local ou SSH autorizado para r
 
 **Depois da instalação**, a [integração MCP do Jubart](https://github.com/paulo-leo/jubart/blob/main/docs/MCP.md) permite monitorar toda a instalação e operar containers, aplicações, WebSockets, filas/jobs, backups e conexões de banco conforme as ações concedidas. A [skill Jubart MCP](https://github.com/paulo-leo/jubart/blob/main/.github/skills/jubart-mcp/SKILL.md) orienta essas operações. Configure a chave no armazenamento de segredos do cliente; não é necessário enviá-la na conversa. O Bash no host é opcional, exige a permissão `terminal.host` e o agente local e executa com os privilégios do usuário que iniciou o agente.
 
-## Novidades da versão 1.3.0
+## Novidades da versão 1.4.0
 
-- **MCP para toda a infraestrutura:** leitura de containers, serviços, volumes, aplicações, proxies, redirecionamentos, bancos, usuários e saúde; ações de iniciar, parar e reiniciar conforme as permissões.
-- **Backups pelo MCP:** configurar pasta no host, agenda, fuso, retenção, seleção de bancos MariaDB/PostgreSQL desta instalação e destino S3 compatível; executar backup imediato e gerenciar conexões salvas sem retornar senhas.
-- **Incidentes e notificações:** monitoramento periódico configurável, histórico consultável e eventos SSE no painel ou em clientes externos autenticados.
-- **CLI e aplicações pelo MCP:** descoberta de comandos, prévias, criação/atualização de apps e remoção condicionada a pastas/volumes de projeto vazios; consulta de diretórios e Bash no host com autorização própria.
-- **Integração renovada:** guias compactas, exemplos copiáveis, switches de permissões e [Skill para desenvolver plugins e clientes](https://github.com/paulo-leo/jubart/blob/main/.github/skills/jubart-mcp-plugin/SKILL.md).
+- **SQL somente leitura pelo MCP:** listar as conexões salvas no painel, validar e executar SELECT, SHOW, DESCRIBE e EXPLAIN de SELECT, com resultados em tabela e transações READ ONLY. Alterações são bloqueadas, mesmo com uma conta de banco gravável.
+- **PHP, Composer e imagens pelo MCP:** consultar versões encontradas, extensões carregadas, configurações CLI permitidas e imagens reais com IDs e digests.
+- **Notificações HTTP:** cadastrar destinos GET/POST, cabeçalhos e parâmetros para incidentes e mudanças de estado dos serviços; consultar entregas e gerenciar destinos também pelo MCP.
+- **Bash dos apps pelo MCP:** sessões persistentes nos containers com permissão própria, acompanhamento de saída e encerramento explícito.
+- **Atualização oficial no painel:** consultar versões do GitHub e imagens do Docker Hub, revisar alterações e atualizar somente o painel e as fontes permitidas, preservando aplicações, bancos, volumes e configurações locais.
+- **Serviços e backups:** descoberta de permissões e atalhos MCP para iniciar containers, consultar agendas, configurar destinos/retenção e executar cópias imediatas sem confundir essas operações.
+
+Continuam disponíveis a leitura de toda a infraestrutura, proxies, bancos e usuários, o histórico de incidentes e SSE, a gestão de aplicações pela CLI e as [Skills de integração](https://github.com/paulo-leo/jubart/blob/main/docs/MCP.md).
 
 As chaves existentes mantêm suas permissões. Novas ações precisam ser concedidas explicitamente. Atualizar a imagem não configura nem executa backups automaticamente.
 
@@ -59,7 +62,7 @@ As chaves existentes mantêm suas permissões. Novas ações precisam ser conced
 | Painel Jubart | Servidor Node.js, dependências de produção e interface React compilada incluídos na imagem |
 | Ferramentas do painel | Docker CLI, Compose e Buildx incluídos na imagem |
 | Traefik, bancos, PHP, cache e outros serviços | Containers separados, definidos pelos arquivos Compose da instalação |
-| CLI e instalador | Comando shell global no host; Python, Node.js, Compose e Buildx executados em `paulo2021/jubart:cli-1.3.0` |
+| CLI e instalador | Comando shell global no host; Python, Node.js, Compose e Buildx executados em `paulo2021/jubart:cli-1.4.0` |
 | Projetos, credenciais, configurações e dados | Diretórios e volumes persistentes da sua instalação |
 
 Não é necessário instalar Node.js, npm, PHP ou os bancos diretamente no host. As dependências das suas aplicações são preparadas conforme cada projeto.
@@ -91,7 +94,7 @@ sudo update-ca-certificates
 Com os requisitos instalados, baixe os arquivos da versão:
 
 ```bash
-git clone --branch v1.3.0 --depth 1 https://github.com/paulo-leo/jubart.git
+git clone --branch v1.4.0 --depth 1 https://github.com/paulo-leo/jubart.git
 cd jubart
 ```
 
@@ -114,7 +117,7 @@ Abra o `.env` criado e acrescente **`:compose.production.yaml` ao final do valor
 COMPOSE_FILE=compose.yaml:config/automation.compose.json:config/apps.compose.yaml:config/proxy-network.compose.yaml:compose.production.yaml
 ```
 
-O override seleciona `paulo2021/jubart:1.3.0` e desativa o build local do painel. A variável opcional `JUBART_IMAGE` permite escolher outra versão ou digest.
+O override seleciona `paulo2021/jubart:1.4.0` e desativa o build local do painel. A variável opcional `JUBART_IMAGE` permite escolher outra versão ou digest.
 
 ### 4. Baixar e iniciar somente o painel
 
@@ -132,7 +135,7 @@ Os demais serviços podem ser configurados e iniciados conforme a necessidade da
 ## Baixar apenas a imagem
 
 ```bash
-docker pull paulo2021/jubart:1.3.0
+docker pull paulo2021/jubart:1.4.0
 ```
 
 Esse comando não inicia containers, não instala a CLI no host e não baixa automaticamente todos os bancos e runtimes da infraestrutura.
@@ -155,8 +158,8 @@ Preserve o workspace e os volumes persistentes. Para voltar a uma versão anteri
 
 | Tag | Plataforma | Uso |
 | --- | --- | --- |
-| `1.3.0` | `linux/amd64` | Painel da versão 1.3.0 |
-| `cli-1.3.0` | `linux/amd64` | Runtime independente da CLI e do instalador |
+| `1.4.0` | `linux/amd64` | Painel da versão 1.4.0 |
+| `cli-1.4.0` | `linux/amd64` | Runtime independente da CLI e do instalador |
 | `1.2.0` | `linux/amd64` | Painel anterior com runtime independente da CLI |
 | `cli-1.2.0` | `linux/amd64` | Runtime da versão anterior |
 | `1.1.0` | `linux/amd64` | Painel anterior; instalador dessa versão utiliza Python no host |

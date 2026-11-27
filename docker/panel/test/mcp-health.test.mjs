@@ -46,6 +46,10 @@ test('saúde combina Docker, HTTP, rota do proxy e PING; serviços desativados n
   assert.ok(f.endpoints.every(endpoint => endpoint.path === '/' || endpoint.path === '/robots.txt' || endpoint.path === '/health' || endpoint.path === '/metrics'));
 });
 
+test('saúde: leitura interna fresh descarta cache após mudança do container',async t=>{
+ const f=await fixture(t);await f.api.read();const row=f.state.services.find(row=>row.name==='php');row.state='exited';assert.equal((await f.api.read()).services.find(row=>row.name==='php').status,'operational');assert.equal((await f.api.read({fresh:true})).services.find(row=>row.name==='php').status,'unavailable');assert.equal(f.snapshots(),2);
+});
+
 test('container running sem healthcheck ou teste de protocolo continua desconhecido', async t => {
   const f = await fixture(t);
   f.state.services.push({name: 'custom-worker', state: 'running', health: null});

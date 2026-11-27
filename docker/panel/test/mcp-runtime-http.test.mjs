@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {once} from 'node:events';
+import {createPanel} from '../server.mjs';
+import {Client} from '@modelcontextprotocol/sdk/client/index.js';
+import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+test('MCP SDK: chave só read consulta PHP/imagens sem conceder Bash ou aceitar comandos',async t=>{
+ const root=await fs.mkdtemp('/tmp/jubart-runtime-http-'),clients=[],calls=[],id='a'.repeat(64),image='sha256:'+'1'.repeat(64);await fs.writeFile(root+'/.env','APP_DOMAIN=localhost\nAPP_DIRECTORY=/projects/main\nPHP_VERSION=8.4.27\nFRANKENPHP_VERSION=1\n');
+ const container={Id:id,Image:image,Name:'/test-php-1',Config:{Image:'php:actual',Labels:{'com.docker.compose.project':'test','com.docker.compose.service':'php'},Env:['SECRET=never-return-this']},State:{Status:'running',Running:true,StartedAt:'2026-11-27T10:00:00Z'},Mounts:[]};
+ const executor=async(_,args)=>{calls.push(args);let stdout='';if(args.includes('config')&&args.includes('--format'))stdout=JSON.stringify({name:'test',services:{php:{image:'php:configured'},panel:{}}});else if(args[0]==='ps')stdout=id;else if(args[0]==='inspect')stdout=JSON.stringify([container]);else if(args[0]==='image')stdout=JSON.stringify([{Id:image,RepoTags:['php:actual'],RepoDigests:[],Architecture:'amd64',Os:'linux'}]);else if(args[0]==='exec')stdout=JSON.stringify({version:'8.4.27',zendVersion:'4.4.27',sapi:'cli',integerBits:64,extensions:[{name:'pdo_mysql',version:'8.4.27'}],ini:{memory_limit:'256M'},composer:{installed:true,available:true,version:'2.11.1',path:'/usr/local/bin/composer'}});return {stdout};};
+ const server=createPanel({root,username:'admin',password:'test-password-long-enough',executor,healthProbe:async()=>({status:'unknown'})});server.listen(0,'127.0.0.1');await once(server,'listening');t.after(async()=>{for(const client of clients)await client.close();server.closeAllConnections();await server.shutdown();await new Promise(resolve=>setTimeout(resolve,150));await fs.rm(root,{recursive:true,force:true});});
+ const base='http://127.0.0.1:'+server.address().port,login=await fetch(base+'/api/login',{method:'POST',body:JSON.stringify({username:'admin',password:'test-password-long-enough'})}),session=await login.json(),headers={Cookie:login.headers.get('set-cookie').split(';')[0],'X-CSRF-Token':session.csrf};
+ async function connect(scopes,actions){const key=await(await fetch(base+'/api/mcp/keys',{method:'POST',headers,body:JSON.stringify({name:'QA',scopes,actions,expiresInDays:1})})).json(),client=new Client({name:'qa',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+key.token}}}));clients.push(client);return {client,key};}
+ const {client,key}=await connect(['read'],[]),tools=(await client.listTools()).tools.map(tool=>tool.name);assert.ok(tools.includes('jubart_php_runtime'));assert.ok(tools.includes('jubart_images_read'));assert.equal(tools.some(name=>name.includes('shell')),false);
+ const php=await client.callTool({name:'jubart_php_runtime',arguments:{app:'main'}});assert.notEqual(php.isError,true,JSON.stringify(php));assert.equal(JSON.parse(php.content[0].text).applications[0].runtime.composer.version,'2.11.1');
+ const images=await client.callTool({name:'jubart_images_read',arguments:{service:'php'}});assert.notEqual(images.isError,true);assert.equal(JSON.parse(images.content[0].text).services[0].image.observed.imageId,image);assert.equal(JSON.stringify(images).includes('never-return-this'),false);
+ const invalid=await client.callTool({name:'jubart_php_runtime',arguments:{app:'main',command:'env'}});assert.equal(invalid.isError,true);assert.equal(calls.some(args=>['run','start','restart','pull','build'].includes(args[0])),false);
+ const rest=await fetch(base+'/api/ai/read?resource=php-runtime&app=main',{headers:{Authorization:'Bearer '+key.token}});assert.equal(rest.status,200);assert.equal((await rest.json()).applications[0].runtime.version,'8.4.27');
+ const writer=await connect(['execute'],['container.start']);assert.equal((await writer.client.listTools()).tools.some(tool=>tool.name==='jubart_php_runtime'),false);
+});

@@ -1,3 +1,4 @@
+import './switch-field.css';
 import {useIncidentFeed} from './incident-feed.js';
 import {Notifications,notification} from './Notifications.jsx';
 import {CodeEditor} from './CodeEditor.jsx';
